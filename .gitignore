@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Kotlin daemon session/error data (never belongs in the repo)
+.kotlin/
+
+# Android / local machine config
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code session dir (not part of the project)
+.claude/
+
+# Locally-downloaded toolchain (lives outside the repo anyway)
+calc-tooling/

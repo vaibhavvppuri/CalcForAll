@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm:
+    name: Engine, API and portable regression batteries
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Make wrapper executable
+        run: chmod +x ./gradlew
+      - name: Build JVM modules without an Android SDK environment
+        run: env -u ANDROID_HOME -u ANDROID_SDK_ROOT ./gradlew :core:build :api:build :battery:test --no-daemon --max-workers=2 --stacktrace
+      - name: Keep test and battery evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: jvm-test-results
+          retention-days: 14
+          path: |
+            core/build/reports/tests/
+            core/build/test-results/
+            api/build/reports/tests/
+            api/build/test-results/
+            battery/build/reports/
+            battery/build/test-results/
+            battery/build/battery/
+
+  android:
+    name: Android tests, lint and debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Make wrapper executable
+        run: chmod +x ./gradlew
+      - name: Test, lint and assemble
+        run: ./gradlew :android:testDebugUnitTest :android:lintDebug :android:assembleDebug --no-daemon --max-workers=2 --stacktrace
+      - name: Keep Android verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: android-test-results
+          retention-days: 14
+          path: |
+            android/build/reports/tests/
+            android/build/test-results/
+            android/build/reports/lint-results-debug.*
+      - name: Keep debug APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: calcforall-debug-apk
+          retention-days: 14
+          if-no-files-found: error
+          path: android/build/outputs/apk/debug/android-debug.apk

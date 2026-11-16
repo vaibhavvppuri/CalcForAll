@@ -1,0 +1,15 @@
+# Normalise line endings so the same wrapper/scripts work on Windows + CI Linux.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+
+# Treat the wrapper jar and other binaries as binary.
+*.jar binary
+
+# Preserve distributed notices exactly, including their original line endings.
+android/src/main/assets/legal/** -text
+docs/licenses/** -text
+android/src/main/assets/fonts/OFL-*.txt -text
+LICENSE -text
+THIRD-PARTY-NOTICES.md -text

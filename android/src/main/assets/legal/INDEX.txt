@@ -1,0 +1,49 @@
+CalcForAll privacy and legal notices
+
+All listed legal texts are bundled in the app and readable offline.
+Original CalcForAll code: MIT. Fonts: SIL Open Font License 1.1.
+AndroidX, Kotlin, Ktor and other components retain their own licenses.
+Google ML Kit OCR/model is subject to Google SDK terms, not the app MIT license.
+Android desugaring includes GPLv2 code with the Classpath Exception.
+
+Start with privacy.md, THIRD-PARTY-NOTICES.md and RESOLVED-DEPENDENCIES.md.
+The desugar source location and SHA-256 are in desugar_jdk_libs-2.0.3-SOURCE.md.
+Complete corresponding source accompanies the source/APK release; it is not embedded in the APK.
+The upstream third_party_licenses text is preserved completely. The adjacent JSON files index it.
+
+Files:
+Apache-2.0.txt
+CalcForAll-MIT.txt
+OFL-IBMPlexSans.txt
+OFL-IBMPlexSansDevanagari.txt
+OFL-JetBrainsMono.txt
+PROVENANCE.md
+R8-BSD-3-Clause.txt
+RESOLVED-DEPENDENCIES.json
+RESOLVED-DEPENDENCIES.md
+THIRD-PARTY-NOTICES.md
+big-math-2.3.2-MIT.txt
+com.google.android.datatransport_transport-api_2.2.1-third_party_licenses.json
+com.google.android.datatransport_transport-api_2.2.1-third_party_licenses.txt
+com.google.android.datatransport_transport-runtime_2.2.6-third_party_licenses.json
+com.google.android.datatransport_transport-runtime_2.2.6-third_party_licenses.txt
+com.google.android.gms_play-services-base_18.5.0-third_party_licenses.json
+com.google.android.gms_play-services-base_18.5.0-third_party_licenses.txt
+com.google.android.gms_play-services-mlkit-text-recognition_19.0.1-third_party_licenses.json
+com.google.android.gms_play-services-mlkit-text-recognition_19.0.1-third_party_licenses.txt
+com.google.android.odml_image_1.0.0-beta1-third_party_licenses.json
+com.google.android.odml_image_1.0.0-beta1-third_party_licenses.txt
+com.google.mlkit_common_18.11.0-third_party_licenses.json
+com.google.mlkit_common_18.11.0-third_party_licenses.txt
+com.google.mlkit_vision-common_17.3.0-third_party_licenses.json
+com.google.mlkit_vision-common_17.3.0-third_party_licenses.txt
+com.google.mlkit_vision-interfaces_16.3.0-third_party_licenses.json
+com.google.mlkit_vision-interfaces_16.3.0-third_party_licenses.txt
+desugar_jdk_libs-2.0.3-ASSEMBLY_EXCEPTION.txt
+desugar_jdk_libs-2.0.3-LICENSE.txt
+desugar_jdk_libs-2.0.3-SOURCE.md
+desugar_jdk_libs-2.0.3-THIRD_PARTY_README.txt
+mlkit-text-recognition-16.0.1-third_party_licenses.json
+mlkit-text-recognition-16.0.1-third_party_licenses.txt
+org.slf4j_slf4j-api_2.0.16-LICENSE.txt
+privacy.md
