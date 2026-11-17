@@ -4,7 +4,7 @@
 
 CalcForAll is a native Android calculator with a shared Kotlin mathematics engine and an optional local HTTP API. It keeps exact fractions and supported symbolic values, explains errors, and makes equations, units, graphs, and calculation history available in one app.
 
-This repository is a **1.0 preview**. Its core, graphing, algebra, and input-recognition capabilities have different limits; the [capability matrix](docs/CAPABILITY-MATRIX.md) and [verification record](docs/VERIFICATION.md) distinguish implemented behavior from remaining release work. It is not a claim that every calculator or general computer-algebra feature is complete.
+The Android app's current update is **1.1.0-preview**; the unchanged local API remains **1.0.0-preview**. Its core, graphing, algebra, and input-recognition capabilities have different limits; the [capability matrix](docs/CAPABILITY-MATRIX.md) and [verification record](docs/VERIFICATION.md) distinguish implemented behavior from completed checks. These version numbers do not mean that every feature in the historical v2–v4 roadmap is complete.
 
 ## What is included
 
@@ -17,7 +17,8 @@ This repository is a **1.0 preview**. Its core, graphing, algebra, and input-rec
 - Unit arithmetic in main entry and conversions through the Units tool/API, Indian units and digit grouping, Devanagari numerals, physical constants with uncertainty, matrices up to 6 × 6, descriptive statistics, linear regression, and integer base conversion.
 - Bounded symbolic simplification, expansion, factorisation, differentiation and supported antiderivatives. Finite proper numerical integration is available in the shared core, local API and Tools, with an approximation marker and estimated error. Native adapter/device verification is recorded in `docs/VERIFICATION.md`.
 - Light, dark, AMOLED and system themes, plus portrait and landscape layouts.
-- Optional **experimental** finger/stylus symbol entry and photo text recognition. The symbol pad works one digit/operator at a time. Photo text uses a bundled on-device OCR model and requires reviewing the recognised expression before calculation. Neither feature is a general handwritten-equation or word-problem solver.
+- Optional **experimental** finger/stylus entry, now with **One symbol** and **Spaced line** modes. **Read line** proposes an editable, unverified draft from spaced symbols on one baseline, with per-symbol alternatives and explicit review before use. This is bounded local geometry matching, not trained whole-equation recognition.
+- Photo text uses a bundled on-device OCR model; the 1.1 update lets you select a detected line for editing or restore the full recognized text, including multi-line equation systems. Every expression requires review before calculation. It is not a general photo-math or word-problem solver.
 
 The calculator does not need an account, a subscription, a paid API, or a running server. Arithmetic and the supplied OCR model run locally. The Android manifest removes internet and network-state permissions and disables automatic app backup. Google's ML Kit SDK has its own terms and general metrics behavior, described in the [privacy policy](docs/PRIVACY.md); those terms are not replaced by this project's license.
 
@@ -72,7 +73,7 @@ The engine stores exact rationals, supported surds, and rational multiples of π
 
 Symbolic operations deliberately support a bounded subset of real algebra and calculus. Unsupported expressions return a typed explanation. Domain conditions remain part of symbolic answers. Definite integration estimates, 2D/3D graph sampling and numerical root searches are not proofs of completeness or rigorous error bounds. The 3D view represents a single real height `z` at each sampled `(x,y)`; general implicit or parametric surfaces are outside this preview. See [SYMBOLIC.md](docs/SYMBOLIC.md) and [NUMERIC-LIMITS.md](docs/NUMERIC-LIMITS.md).
 
-The Latin OCR model recognises printed text, not general two-dimensional mathematical layout. Review signs, exponents, decimal points and fractions before using the text. Handwriting candidates are suggestions that require a selection; the app does not silently trust a match.
+The Latin OCR model recognises printed text, not general two-dimensional mathematical layout. Detected-line selection preserves the OCR characters; it does not silently repair ambiguous `O`/`0`, infer fraction layout or reconstruct superscripts. Review signs, exponents, decimal points and fractions before using the text. The handwriting line draft supports spaced digits and a small operator/symbol set on one baseline, with at most 32 glyphs. It refuses detected ambiguous layouts and unsupported top matches; this is not proof that every accepted draft is correct. Stacked fractions, superscripts, radical bars and general multi-line handwriting remain unsupported.
 
 ## Repository map
 

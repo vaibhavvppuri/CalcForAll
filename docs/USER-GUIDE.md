@@ -1,6 +1,6 @@
 # Using CalcForAll
 
-CalcForAll is an offline Android calculator. Install the supplied preview APK by opening it on your phone and following Android's installation prompts. The compatibility target is Android 6.0 or later; the [verification record](VERIFICATION.md) lists what was actually tested. The APK is a development build, not a Play Store release.
+CalcForAll is an offline Android calculator. This guide describes the **1.1.0-preview Android update**; the optional, unchanged local API retains version 1.0.0-preview. Install the supplied APK by opening it on your phone and following Android's installation prompts. The compatibility target is Android 6.0 or later; the [verification record](VERIFICATION.md) lists what was actually tested. The APK is a development build, not a Play Store release.
 
 The installed app needs no account, subscription, API key or local server. Calculations and the bundled photo-text model run on the device. Building the app from source initially requires downloading development dependencies; using the installed calculator does not.
 
@@ -81,9 +81,16 @@ Both views show the current angle mode and use a snapshot of registers, Ans and 
 
 ## Handwriting and photo text
 
-**Tools → Handwriting** is experimental. Draw one digit or operator, choose a suggested match, and build the expression one symbol at a time. A stylus is optional; **Stylus only** ignores finger strokes. Use **Undo stroke**, **Clear pad** and the editable expression to correct mistakes, then **Use reviewed expression** and **=**.
+**Tools → Handwriting** is experimental. A stylus is optional; **Stylus only** ignores finger strokes. Choose a mode:
 
-**Tools → Photo text** lets you **Choose an image**, rotate it and read it again. Review and correct the recognized expression before **Use reviewed expression**. It uses bundled on-device text recognition, not a general photo-math solver. Fractions, superscripts, handwriting and word problems may be read incorrectly. The image is not saved in calculation history.
+- **One symbol:** draw one digit or operator, then choose a suggested match to build the expression one symbol at a time.
+- **Spaced line:** write clearly separated symbols left to right at roughly the same height, then tap **Read line**. The local matcher proposes an **Unverified draft** in **Review expression**. Numbered glyph buttons let you inspect alternative matches; choosing an alternative rebuilds the draft, so make free-text corrections afterward. Review every symbol before **Use reviewed expression** and **=**.
+
+Use **Undo stroke** or **Clear pad** to correct the ink. Line mode supports digits, decimal points, `+`, `−`, `×`, `/`, `=`, parentheses, `^`, `x` and `π`; ambiguous `x`/`×` readings remain review choices. Write powers inline using `^`, not raised superscripts, and fractions inline using `/`, not stacked bars. The draft is limited to 32 glyphs, 64 strokes and 12,000 points, with at most four strokes per glyph; the review field holds at most 2,048 characters. Detected stacked/multi-line layouts, unclear matches and unsupported symbols can be refused. This geometry matcher is not a trained whole-equation handwriting recognizer and cannot certify that an accepted draft is correct.
+
+**Tools → Photo text** lets you **Choose an image**, rotate it and read it again. In 1.1, when multiple lines are detected, numbered buttons offer up to 24 nonblank lines; choose one to place that line in the editable review field. **Restore full recognized text** returns to the original OCR text after a selection or edit. Keep the full text when you intend a supported system of equations on separate lines. Review and correct it before **Use reviewed expression**.
+
+Line selection preserves what OCR read, including ambiguous letters/digits, superscripts and fraction characters; it does not silently repair them or infer two-dimensional layout. The editable text is capped at 8,192 characters. This is bundled on-device text recognition, not a general photo-math solver; handwriting and word problems may be read incorrectly. The image is not saved in calculation history.
 
 ## Settings and local data
 

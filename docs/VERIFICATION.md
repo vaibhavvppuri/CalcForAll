@@ -1,4 +1,27 @@
-# Verification record — 1.0 preview
+# Verification record — Android 1.1 preview and API 1.0 preview
+
+## Android 1.1 update — current evidence
+
+At **11 November 2026, 04:32 India time**, the Android `1.1.0-preview` (version code 2) gate in `release-android-gates-r7.log` completed **BUILD SUCCESSFUL** in 7 minutes 52 seconds (54 tasks: 22 executed, 32 up-to-date). Its **99 unit tests in 14 suites** passed with zero failures, errors or skips; these counts come from XML beginning at 04:25:25 India time. APK assembly and lint completed, with **zero lint errors, 21 warnings and four informational findings**, the same categories recorded for the baseline below. New-APK signature verification and the API 23 installation/launch checks described below passed. The unchanged core, battery and local API retain their earlier verified receipts; the API remains **1.0.0-preview**.
+
+The update adds **Spaced line → Read line** handwriting drafts with per-glyph alternatives and explicit editable review, plus photo OCR line selection and restoration of full recognized text. Seventeen new tests cover six photo-line cases, three ink-input bounds and eight line-grouping/recognition cases. These are bounded local review aids, not a trained general handwriting recognizer, mathematical-layout OCR, or completion of the historical v2–v4 roadmap.
+
+| Current artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Android `1.1.0-preview` APK, `android/build/outputs/apk/debug/android-debug.apk` | 55,731,637 | `f3d5b1711839d7212fa4fa1768a8827ffcd78960bdcfecd421dcce91be23ce85` |
+| Unchanged API `1.0.0-preview` ZIP | 10,464,736 | `dbd4fb0f9349761c47f36091882f48c6ca86626a6b6c620da59df3853c3d11ac` |
+
+The `r7` static audit confirms the new version name/code, minSdk 23 and targetSdk 34, false backup flags and the data-extraction resource reference. All **36 APK legal assets**, **38 API notice/document files** and **21 external API JAR hashes** match their sources/inventory. All four native library hashes are unchanged from `r6`; fresh ZIP/ELF/RELRO checks pass for the 64-bit libraries, every native ZIP entry is stored and 16 KB aligned, and the 32-bit ELF files retain their previously documented 4 KB alignment. The actual legacy `zipalign` check passed. Receipts are `packaged-notice-audit-r7.json`, `apk-r7-manifest.txt` and the refreshed `apk-native-alignment.json`; earlier native receipts are preserved separately. No 16 KB-page runtime claim is made.
+
+The new APK is smaller than the preserved 1.0 APK. A read-only archive comparison found exactly the same 592 entry names, all seven DEX files and byte-identical assets/native libraries; the app DEX grew by 62,228 uncompressed bytes. The size reduction is in archive/alignment/signing overhead, not omitted payload. The comparison is retained in `apk-r7-size-delta.json`.
+
+The final `apk-signature-r7.txt` receipt reports **Verifies** with v1/v2 signatures present and other schemes absent. It retains the standard unsigned `META-INF` metadata warnings; this is a development-signed preview, and verification is not described as warning-free. The signing tool exited successfully.
+
+The new 1.1 APK installed and launched successfully on API 23 with Wi-Fi and mobile data disabled. One launch measured **882 ms on the emulator**, not a physical-device benchmark. In **Tools → Handwriting → Spaced line**, an actual `1+1` drawing was read as three glyphs `1`, `+`, `1`, with editable draft `1+1`; **Use reviewed expression** then **=** returned 2. The UI hierarchy is retained as `api23-r7-ink-draft.xml`, and the emulator was stopped after the check. The new photo line-picker has six passing adapter tests but has not been device-tested in this 1.1 session. No new 1.1 API 34 or broad recognition-accuracy claim is made.
+
+The completed record below describes the **Android 1.0.0-preview `r6` baseline** and its preceding iterations. Its API 23/34 device observations must not be treated as new-APK 1.1 device tests.
+
+## Verified 1.0 baseline
 
 Snapshot: **11 November 2026, 02:27 India time**. The `r3` combined release gate and packaged API smoke test are green, as are the subsequent Android-only gates through `r6`. Fresh static/native/legal/signature receipts identify the exact `r6` APK. Final `r6` checks passed on both API 23 and API 34 emulators, including switch-label readback, exact-value clipboard round trip and linear intersections on API 34, plus same-APK API 23 installation and calculation. The earlier broader device observations remain separately documented; only two switch accessibility labels changed between `r5` and `r6`. The required preview handoff checks are complete within the scope recorded here. This record supersedes old milestone test counts in `PROGRESS.md`; those historical reports remain unchanged.
 
@@ -38,7 +61,7 @@ Android lint completed with **0 errors**, **21 warnings**, and **4 informational
 
 The `r2` data-extraction warning was fixed in `r3`. Inspection of the compiled APK confirms `allowBackup=false`, `fullBackupContent=false`, the data-extraction resource reference, and 18 compiled exclusions: nine storage domains each for cloud backup and device transfer. The warning is absent from the new lint report. This verifies the packaged configuration; an actual cloud-backup/device-transfer exercise has not been performed.
 
-Current artifacts covered by the static/native/legal audit are the `r6` APK and unchanged `r3` API distribution:
+The 1.0 baseline artifacts covered by this static/native/legal audit are the `r6` APK and unchanged `r3` API distribution. The Android build path may later contain the 1.1 update; the hash below identifies the earlier 1.0 artifact specifically:
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |

@@ -39,9 +39,21 @@ object InkRecognizer {
     private val normalized by lazy { templates.map { (label, paths) -> Triple(label, normalize(paths), paths.size) } }
 
     fun recognize(strokes: List<List<InkPoint>>): List<InkCandidate> {
+        // Refuse oversized input before flattening or visiting individual points.
+        if (strokes.size > 32) return emptyList()
+        var pointCount = 0
+        for (stroke in strokes) {
+            if (stroke.size > 12000 - pointCount) return emptyList()
+            pointCount += stroke.size
+        }
+        if (pointCount < 2) return emptyList()
         val points = strokes.flatten()
-        if (points.size < 2 || points.size > 12000 || strokes.size > 32) return emptyList()
-        if(points.any { !it.x.isFinite() || !it.y.isFinite() }) return emptyList()
+        // These are screen coordinates, not calculator values. Bound finite input as
+        // well: extreme Float coordinates can otherwise overflow geometry into NaN.
+        if (points.any { !it.x.isFinite() || !it.y.isFinite() || abs(it.x) > 1_000_000f || abs(it.y) > 1_000_000f }) return emptyList()
+        val width = points.maxOf { it.x } - points.minOf { it.x }
+        val height = points.maxOf { it.y } - points.minOf { it.y }
+        if (!width.isFinite() || !height.isFinite()) return emptyList()
         val cloud = normalize(strokes)
         if(cloud.isEmpty()) return listOf(InkCandidate(".", 0f))
         fun distance(a: List<InkPoint>, b: List<InkPoint>): Float = a.sumOf { p ->

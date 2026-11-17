@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.exifinterface.media.ExifInterface
@@ -35,8 +36,11 @@ fun PhotoScreen(onClose: () -> Unit, onUse: (String) -> Unit) {
     val context = LocalContext.current
     val p = LocalCalcPalette.current
     val scope = rememberCoroutineScope()
+    val pageScroll = rememberScrollState()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var text by remember { mutableStateOf("") }
+    var recognizedText by remember { mutableStateOf("") }
+    val recognizedLines = remember(recognizedText) { PhotoTextReview.lines(recognizedText) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     fun read(image: Bitmap) {
@@ -50,6 +54,7 @@ fun PhotoScreen(onClose: () -> Unit, onUse: (String) -> Unit) {
                         .addOnFailureListener { failure -> if(continuation.isActive) continuation.resumeWithException(failure) }
                 }
                 text = recognized.take(CalcSession.MAX_ENTRY_CHARS)
+                recognizedText = text
                 if(recognized.isBlank()) error = "No text was found. Try a sharper, closer image with good lighting."
                 else if(recognized.length > CalcSession.MAX_ENTRY_CHARS) error = "Only the first 8,192 characters are shown. Select a smaller expression."
             } catch(e: CancellationException) { throw e }
@@ -59,7 +64,7 @@ fun PhotoScreen(onClose: () -> Unit, onUse: (String) -> Unit) {
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if(uri != null) {
-            busy = true; error = null; text = ""
+            busy = true; error = null; text = ""; recognizedText = ""
             scope.launch {
                 try {
                     val image = withContext(Dispatchers.IO) { readPhoto(context, uri) }
@@ -71,7 +76,7 @@ fun PhotoScreen(onClose: () -> Unit, onUse: (String) -> Unit) {
         }
     }
     Surface(Modifier.fillMaxSize(), color = p.paper) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(pageScroll).imePadding().padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Photo text", style = MaterialTheme.typography.headlineSmall)
                 TextButton(onClick = onClose) { Text("Close") }
@@ -93,6 +98,19 @@ fun PhotoScreen(onClose: () -> Unit, onUse: (String) -> Unit) {
             }
             if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 12.dp)) }
+            if(recognizedLines.size > 1) {
+                Text("Choose a recognized line", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 12.dp))
+                Text("Tap one line to review it below. For a system of equations, keep the full text. Up to 24 lines are listed; mathematical layout is not inferred.", fontSize = 12.sp)
+                recognizedLines.forEachIndexed { index, line ->
+                    OutlinedButton(onClick = { text = line; scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("${index + 1}. $line", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            if(recognizedText.isNotEmpty() && text != recognizedText) {
+                TextButton(onClick = { text = recognizedText }, enabled = !busy) { Text("Restore full recognized text") }
+            }
             OutlinedTextField(text, { text = it.take(CalcSession.MAX_ENTRY_CHARS) }, label = { Text("Review and correct the expression") },
                 enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp), maxLines = 10)
             Button(onClick = { onUse(text.trim()) }, enabled = !busy && text.isNotBlank(),
