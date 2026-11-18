@@ -660,7 +660,7 @@ internal object B2Cases {
 
         out += B2Run.case(id(), "R", listOf(a("#1+1")), note = "self-badge is a cycle of one (D-033)",
             oracles = { h -> listOf(h.expectCycleMembers(1, listOf(1))) })
-        out += B2Run.case(id(), "R", listOf(B2Ev.AppendState(frac("#1", "2"), "(#1)/(2)")), note = "2D self-badge",
+        out += B2Run.case(id(), "R", listOf(B2Ev.AppendState(frac("#1", "2"), "((#1)/(2))")), note = "2D self-badge",
             oracles = { h -> listOf(h.expectCycleMembers(1, listOf(1))) })
         out += B2Run.case(id(), "R", listOf(a("2"), a("3"), a("4"), a("#1+#2+#3")), note = "multi-ref sums",
             oracles = { h -> listOf(h.expectScalar(4, "9")) })

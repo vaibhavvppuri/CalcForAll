@@ -15,7 +15,17 @@ object NumericLimits {
     const val MAX_COMPUTE_PRECISION = 1_024
     /** Session/API arithmetic shares the number tower's 50-digit fallback. */
     const val MAX_SESSION_PRECISION = 50
+    /**
+     * Of the fifty digits an estimate is computed to at full precision, how many are trusted
+     * where an answer hinges on which side of a line the estimate falls (a whole number, the
+     * other side of an `=`). The last two are what a handful of rounded operations disturb.
+     */
+    const val TRUSTED_DIGITS = 48
     internal const val MAX_WORKING_PRECISION = MAX_COMPUTE_PRECISION + 128
+    /** Extra digits an irrational is expanded to before it is rounded to the precision asked for. */
+    private const val GUARD_DIGITS = 8
+    /** The widest expansion an irrational can be asked for: its guard digits must fit the budget too. */
+    internal const val MAX_EXPANSION_PRECISION = MAX_WORKING_PRECISION - GUARD_DIGITS
     const val MAX_DECIMAL_EXPONENT = 32_768
     const val MAX_FACTORIAL_ARGUMENT = 10_000
     const val MAX_COMBINATORIC_TERMS = 10_000
@@ -56,7 +66,7 @@ object NumericLimits {
 
     internal fun guard(mc: MathContext): MathContext {
         precision(mc)
-        val guarded = MathContext(mc.precision + 8, mc.roundingMode)
+        val guarded = MathContext(mc.precision + GUARD_DIGITS, mc.roundingMode)
         precision(guarded)
         return guarded
     }

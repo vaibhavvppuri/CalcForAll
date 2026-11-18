@@ -119,4 +119,13 @@ data class Settings(
 
     val computeMc: MathContext get() = MathContext(computePrecision, rounding)
     val displayMc: MathContext get() = MathContext(displayPrecision, rounding)
+
+    /**
+     * How many digits of an estimate computed in this session are trusted: four fewer than it
+     * was computed to. Used where estimates of the session are set against each other and the
+     * answer hinges on whether their difference is anything but rounding: a discriminant, a
+     * determinant.
+     */
+    val trustedDigits: Int get() = maxOf(computePrecision - 4, computePrecision / 2)
+
 }

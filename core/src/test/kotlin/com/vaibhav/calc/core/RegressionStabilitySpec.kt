@@ -25,7 +25,7 @@ class RegressionStabilitySpec : StringSpec({
 
     "centering preserves the variation in large-offset decimal coordinates" {
         val offset = BigDecimal("10000000000000000000000000")
-        val points = (0..2).map { i -> Dec(offset.add(BigDecimal(i))) to Num.of((2 * i + 1).toLong()) }
+        val points = (0..2).map { i -> Dec(offset.add(BigDecimal(i)), BigDecimal.ZERO) to Num.of((2 * i + 1).toLong()) }
         val result = Stats.linearRegression(points, Num.MC)
         result.slope.compareTo(Num.TWO) shouldBe 0
         result.intercept.compareTo(Num.ofDecimal("-19999999999999999999999999")) shouldBe 0

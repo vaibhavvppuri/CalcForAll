@@ -17,14 +17,21 @@ class ToolCalculatorSpec : StringSpec({
         val result = tool("Units", "Convert", "1/3", "m", "cm",
             Settings(displayPrecision = 6, exactForm = ExactForm.DECIMAL, grouping = GroupingMode.INDIAN, numerals = NumeralSystem.DEVANAGARI))
         result.error shouldBe false
-        result.insert shouldBe "(100/3) cm"
+        result.insert shouldBe "((100/3) cm)"
         val value = (Calculator().evaluate(result.insert!!) as CalcResult.Ok).value as QuantityValue
         value.q.value shouldBe Num.of(100, 3)
         value.q.unit.name shouldBe "cm"
     }
 
+    "a converted quantity is inserted as one value, so a typed power raises all of it" {
+        val inserted = tool("Units", "Convert", "10", "km", "m").insert!!
+        inserted shouldBe "((10000) m)"
+        val squared = (Calculator().evaluate("$inserted^2") as CalcResult.Ok).value as QuantityValue
+        squared.q.toBase() shouldBe Num.of(100_000_000)
+    }
+
     "temperature conversion and dimensional mismatch surface usable outcomes" {
-        tool("Units", "Convert", "32", "degF", "degC").insert shouldBe "(0) degC"
+        tool("Units", "Convert", "32", "degF", "degC").insert shouldBe "((0) degC)"
         val wrong = tool("Units", "Convert", "1", "m", "kg")
         wrong.error shouldBe true
         wrong.insert shouldBe null
@@ -34,7 +41,7 @@ class ToolCalculatorSpec : StringSpec({
     "matrix determinant preserves fractions and a rectangular product has the expected rows" {
         val determinant = tool("Matrices", "Determinant", "1/3, 0; 0, 2")
         determinant.error shouldBe false
-        determinant.insert shouldBe "2/3"
+        determinant.insert shouldBe "(2/3)"
         val product = tool("Matrices", "Multiply", "1,2,3;4,5,6", "1;2;3")
         product.error shouldBe false
         product.text.lines() shouldBe listOf("[ 14 ]", "[ 32 ]")

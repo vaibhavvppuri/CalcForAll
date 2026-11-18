@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -126,7 +127,7 @@ fun FunctionSheet(onSelect: (PaletteEntry) -> Unit) {
         Text("Functions", style = MaterialTheme.typography.headlineSmall)
         Text("Tap to insert. Swipe ↑ on a keypad key for its second action.", fontSize = 12.sp,
             modifier = Modifier.padding(vertical = 8.dp))
-        OutlinedTextField(query, { query = it.take(80) }, label = { Text("Find a function") },
+        OutlinedTextField(query, { query = it.take(80) }, keyboardOptions = MathKeyboard, label = { Text("Find a function") },
             singleLine = true, modifier = Modifier.fillMaxWidth())
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 470.dp).padding(top = 12.dp)) {
             if (query.isNotBlank()) {
@@ -160,7 +161,7 @@ fun TypedEntrySheet(initial: String, onUse: (String) -> Unit, onPaste: () -> Str
         Text("Equations: x²−5x+6=0 · Units: 5 km+300 m · Store: 12→A · Link: #1*2",
             fontSize = 12.sp, modifier = Modifier.padding(vertical = 12.dp))
         OutlinedTextField(value, { if (it.text.length <= CalcSession.MAX_ENTRY_CHARS) value = it },
-            label = { Text("Expression") }, modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp), maxLines = 6)
+            keyboardOptions = MathKeyboard, label = { Text("Expression") }, modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp), maxLines = 6)
         Row(Modifier.horizontalScroll(rememberScrollState())) {
             suggestions.forEach { suggestion ->
                 SuggestionChip(onClick = {
@@ -195,7 +196,7 @@ fun HistorySheet(ui: CalcUiState, settings: Settings, onReuse: (EntryId) -> Unit
             Text("History", style = MaterialTheme.typography.headlineSmall)
             if (ui.entries.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Clear") }
         }
-        OutlinedTextField(query, { query = it.take(80) }, label = { Text("Search calculations") },
+        OutlinedTextField(query, { query = it.take(80) }, keyboardOptions = MathKeyboard, label = { Text("Search calculations") },
             singleLine = true, modifier = Modifier.fillMaxWidth())
         val entries = ui.entries.asReversed().filter { query.isBlank() || it.source.toInput().contains(query, true) || it.id.toString().contains(query) }
         LazyColumn(Modifier.heightIn(max = 530.dp)) {
@@ -234,6 +235,8 @@ internal fun ChoiceRow(label: String, choices: List<String>, selected: String, c
 
 @Composable
 fun SettingsSheet(settings: Settings, theme: String, onSettings: ((Settings) -> Settings) -> Unit, onTheme: (String) -> Unit, onDeleteData: () -> Unit, onLegal: () -> Unit) {
+    val appContext = LocalContext.current
+    val appVersion = remember(appContext) { appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName.orEmpty() }
     var confirmDelete by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
@@ -256,9 +259,9 @@ fun SettingsSheet(settings: Settings, theme: String, onSettings: ((Settings) -> 
         Text("Private by design", style = MaterialTheme.typography.titleMedium)
         Text("Calculations and settings stay on this device. No account, ads, paid API or image upload. The app has no Internet permission. Deleting app data removes the saved session.",
             fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-        Text("Photo text uses a bundled Google ML Kit model. Google's SDK terms describe performance and usage metrics; this build blocks direct app networking. Images and recognized text are processed on-device. See the included privacy policy for details.",
+        Text("Photo recognition uses a bundled Google ML Kit model. Google's SDK terms describe performance and usage metrics; this build blocks direct app networking. Images and recognized text are processed on-device. See the included privacy policy for details.",
             fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-        Text("CalcForAll · MIT source license. Bundled fonts and libraries retain their own licenses. See the source distribution for notices.",
+        Text("CalcForAll $appVersion · MIT source license. Bundled fonts and libraries retain their own licenses. See the source distribution for notices.",
             fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
         TextButton(onClick = onLegal) { Text("Privacy policy & open-source licenses") }
         TextButton(onClick = { confirmDelete = true }) { Text("Delete local data") }

@@ -181,6 +181,13 @@ object Units {
         reg(Unit("kmph", Dimension.SPEED, Num.of(5, 18)), "kph")
         reg(Unit("mph", Dimension.SPEED, Num.ofDecimal("0.44704")))
 
+        // The remaining SI base units. They exist so that every symbol Dimension.siSymbol()
+        // can write is a unit the parser can read: the elementary charge renders as `s·amp`,
+        // the gas constant as `m²·kg/(s²·K·mol)`.
+        reg(Unit("amp", Dimension.CURRENT, Num.ONE), "ampere")
+        reg(Unit("mol", Dimension.AMOUNT, Num.ONE), "mole")
+        reg(Unit("cd", Dimension.LUMINOUS, Num.ONE), "candela")
+
         // dimensionless + Indian number scales (spec 9.6)
         reg(Unit("one", Dimension.NONE, Num.ONE))
         reg(Unit("dozen", Dimension.NONE, Num.of(12)))

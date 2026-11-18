@@ -1,6 +1,6 @@
 # Third-party notices
 
-CalcForAll's original code is licensed under the root [MIT License](LICENSE). That license does not replace any third-party license. This document accompanies the 1.0 preview, built from the pinned dependency coordinates in this repository.
+CalcForAll's original code is licensed under the root [MIT License](LICENSE). That license does not replace any third-party license. This document accompanies the 2.0 distribution, built from the pinned dependency coordinates in this repository. The runtime dependency versions and upstream notice contents are unchanged from the recorded inventory.
 
 ## Principal components
 

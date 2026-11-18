@@ -2,6 +2,8 @@ package com.vaibhav.calc.core.matrix
 
 import com.vaibhav.calc.core.num.ArithFault
 import com.vaibhav.calc.core.num.Num
+import com.vaibhav.calc.core.num.Dec
+import com.vaibhav.calc.core.num.establishedSign
 import com.vaibhav.calc.core.num.div
 import com.vaibhav.calc.core.num.minus
 import com.vaibhav.calc.core.num.plus
@@ -57,8 +59,7 @@ class Matrix private constructor(
         val m = data.map { it.toMutableList() }.toMutableList()
         var det: Num = Num.ONE
         for (col in 0 until n) {
-            var pivot = col
-            while (pivot < n && m[pivot][col].isZero) pivot++
+            val pivot = findPivot(m, col, col)
             if (pivot == n) return Num.ZERO
             if (pivot != col) {
                 val t = m[pivot]; m[pivot] = m[col]; m[col] = t; det = -det
@@ -68,7 +69,8 @@ class Matrix private constructor(
             for (r in col + 1 until n) {
                 if (!m[r][col].isZero) {
                     val factor = m[r][col] / p
-                    for (c in col until n) m[r][c] = m[r][c] - factor * m[col][c]
+                    for (c in col + 1 until n) m[r][c] = m[r][c] - factor * m[col][c]
+                    m[r][col] = Num.ZERO // exact elimination identity; the pivot was proved nonzero
                 }
             }
         }
@@ -82,8 +84,7 @@ class Matrix private constructor(
         val a = data.map { it.toMutableList() }.toMutableList()
         val inv = MutableList(n) { r -> MutableList(n) { c -> if (r == c) Num.ONE as Num else Num.ZERO as Num } }
         for (col in 0 until n) {
-            var pivot = col
-            while (pivot < n && a[pivot][col].isZero) pivot++
+            val pivot = findPivot(a, col, col)
             if (pivot == n) throw ArithFault.Domain("matrix is singular (not invertible)", "inverse")
             if (pivot != col) {
                 val ta = a[pivot]; a[pivot] = a[col]; a[col] = ta
@@ -91,6 +92,7 @@ class Matrix private constructor(
             }
             val p = a[col][col]
             for (c in 0 until n) { a[col][c] = a[col][c] / p; inv[col][c] = inv[col][c] / p }
+            a[col][col] = Num.ONE
             for (r in 0 until n) {
                 if (r != col && !a[r][col].isZero) {
                     val factor = a[r][col]
@@ -98,6 +100,7 @@ class Matrix private constructor(
                         a[r][c] = a[r][c] - factor * a[col][c]
                         inv[r][c] = inv[r][c] - factor * inv[col][c]
                     }
+                    a[r][col] = Num.ZERO
                 }
             }
         }
@@ -111,21 +114,38 @@ class Matrix private constructor(
         var row = 0
         for (col in 0 until cols) {
             if (row >= rows) break
-            var pivot = row
-            while (pivot < rows && m[pivot][col].isZero) pivot++
+            val pivot = findPivot(m, row, col)
             if (pivot == rows) continue
             val t = m[pivot]; m[pivot] = m[row]; m[row] = t
             val p = m[row][col]
             for (c in col until cols) m[row][c] = m[row][c] / p
+            m[row][col] = Num.ONE
             for (r in 0 until rows) {
                 if (r != row && !m[r][col].isZero) {
                     val factor = m[r][col]
                     for (c in col until cols) m[r][c] = m[r][c] - factor * m[row][c]
+                    m[r][col] = Num.ZERO
                 }
             }
             row++; rank++
         }
         return rank
+    }
+
+    /** Skip ambiguous candidates when another row supplies a proved nonzero pivot. */
+    private fun findPivot(values: List<List<Num>>, start: Int, column: Int): Int {
+        var uncertain = false
+        for (r in start until values.size) {
+            val value = values[r][column]
+            if (value.isZero) continue
+            try {
+                if (value.establishedSign("matrix pivot") != 0) return r
+            } catch (fault: ArithFault.Unsupported) {
+                uncertain = true
+            }
+        }
+        if (uncertain) throw ArithFault.Unsupported("matrix pivot uncertainty prevents deciding rank or invertibility")
+        return values.size
     }
 
     private fun requireSquare() {
@@ -140,7 +160,15 @@ class Matrix private constructor(
 
     override fun equals(other: Any?): Boolean =
         other is Matrix && rows == other.rows && cols == other.cols &&
-            (0 until rows).all { r -> (0 until cols).all { c -> data[r][c].compareTo(other.data[r][c]) == 0 } }
+            (0 until rows).all { r -> (0 until cols).all { c ->
+                val a = data[r][c]; val b = other.data[r][c]
+                when {
+                    a is Dec && b is Dec -> a == b
+                    a is Dec -> a.absoluteError?.signum() == 0 && a.compareTo(b) == 0
+                    b is Dec -> b.absoluteError?.signum() == 0 && a.compareTo(b) == 0
+                    else -> a.compareTo(b) == 0
+                }
+            } }
 
     // Consistent with the value-based equals above: entries that compareTo-equal
     // hash the same (via their canonical decimal), so equal matrices hash equal.

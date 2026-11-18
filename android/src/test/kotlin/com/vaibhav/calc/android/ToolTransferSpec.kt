@@ -48,14 +48,16 @@ class ToolTransferSpec : StringSpec({
     "a zero width numerical estimate also retains its approximate marker" {
         val answer = tool("Algebra & calculus", "Definite integral", "x^2", "x", "1;1")
         answer.error shouldBe false
-        value(answer.insert!!).shouldBeInstanceOf<Dec>().isZero shouldBe true
+        val estimate = value(answer.insert!!).shouldBeInstanceOf<Dec>()
+        estimate.value.compareTo(BigDecimal.ZERO) shouldBe 0
+        estimate.absoluteError shouldBe null
         answer.text.startsWith("≈ ") shouldBe true
     }
     "exact unit results retain exact insertion while rounded display is labelled" {
         val answer = tool("Units", "Convert", "1/3", "m", "cm",
             Settings(displayPrecision = 6, exactForm = ExactForm.DECIMAL))
         answer.text shouldContain "≈ 33.3333"
-        answer.insert shouldBe "(100/3) cm"
+        answer.insert shouldBe "((100/3) cm)"
         val q = Calculator().evaluate(answer.insert!!).getOrThrow().shouldBeInstanceOf<QuantityValue>()
         q.q.value shouldBe Num.of(100, 3)
     }
@@ -64,10 +66,13 @@ class ToolTransferSpec : StringSpec({
         units.text shouldContain "≈ "
         val q = Calculator().evaluate(units.insert!!).getOrThrow().shouldBeInstanceOf<QuantityValue>()
         q.q.value.shouldBeInstanceOf<Dec>()
-        val matrix = tool("Matrices", "Determinant", "approx(1.25),0;0,1")
+        val matrix = tool("Matrices", "Determinant", "approx(1.25,0),0;0,1")
         matrix.text shouldContain "≈ "
         value(matrix.insert!!).shouldBeInstanceOf<Dec>()
-        tool("Statistics", "Summary", "approx(1.25),2").text shouldContain "Mean: ≈ 1.625"
+        tool("Statistics", "Summary", "approx(1.25,0),2").text shouldContain "Mean: ≈ 1.625"
+        // Unknown accuracy cannot establish a nonzero pivot or an ordered data sample.
+        tool("Matrices", "Determinant", "approx(1.25),0;0,1").error shouldBe true
+        tool("Statistics", "Summary", "approx(1.25),2").error shouldBe true
     }
     "antiderivative reuse explicitly chooses its C equals zero representative" {
         val answer = tool("Algebra & calculus", "Integrate", "2*x", "x")

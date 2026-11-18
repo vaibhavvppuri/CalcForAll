@@ -1,8 +1,15 @@
 package com.vaibhav.calc.core.units
 
-/** The seven SI base dimensions. */
+/**
+ * The seven SI base dimensions. Each symbol is also a registered unit name, so that a
+ * derived unit written from these symbols can be read back (Article 12).
+ *
+ * The ampere is written `amp`, not `A`: `A` is a memory register (D-016.4), and a rendered
+ * `s·A` read back as seconds times whatever register A held. One name, one meaning — the
+ * same choice that keeps `h` the hour and names Planck's constant `h_planck`.
+ */
 enum class BaseDim(val symbol: String) {
-    LENGTH("m"), MASS("kg"), TIME("s"), CURRENT("A"),
+    LENGTH("m"), MASS("kg"), TIME("s"), CURRENT("amp"),
     TEMPERATURE("K"), AMOUNT("mol"), LUMINOUS("cd"),
 }
 
@@ -20,7 +27,13 @@ data class Dimension(val exponents: List<Int>) {
 
     val isDimensionless: Boolean get() = exponents.all { it == 0 }
 
-    /** SI symbol like `m`, `m²`, `kg·m/s²` (empty string when dimensionless). */
+    /**
+     * SI symbol like `m`, `m²`, `kg·m/s²`, `kg/(m·s)` (empty string when dimensionless).
+     *
+     * A denominator of more than one unit is bracketed. `/` and `·` have equal precedence and
+     * read left to right, so an unbracketed `kg/m·s` reads back as kg·s/m — a different
+     * dimension, silently (Article 12: the engine must be able to re-read what it wrote).
+     */
     fun siSymbol(): String {
         val num = StringBuilder()
         val den = StringBuilder()
@@ -31,11 +44,12 @@ data class Dimension(val exponents: List<Int>) {
                 e < 0 -> appendUnit(den, d.symbol, -e)
             }
         }
+        val below = if (den.contains('·')) "($den)" else den.toString()
         return when {
             num.isEmpty() && den.isEmpty() -> ""
             den.isEmpty() -> num.toString()
-            num.isEmpty() -> "1/$den"
-            else -> "$num/$den"
+            num.isEmpty() -> "1/$below"
+            else -> "$num/$below"
         }
     }
 

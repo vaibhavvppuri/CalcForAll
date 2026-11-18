@@ -34,8 +34,11 @@ class ApproxValueSpec : StringSpec({
         val value = real("approx(1.25)+2").num.shouldBeInstanceOf<Dec>()
         value.value.compareTo(BigDecimal("3.25")) shouldBe 0
     }
-    "approx rejects undeclared arities" {
-        for (source in listOf("approx()", "approx(1,2)")) {
+    "approx accepts an explicit absolute error and rejects undeclared arities" {
+        val bounded = real("approx(1,2)").num.shouldBeInstanceOf<Dec>()
+        bounded.value.compareTo(BigDecimal.ONE) shouldBe 0
+        bounded.absoluteError!!.compareTo(BigDecimal(2)) shouldBe 0
+        for (source in listOf("approx()", "approx(1,2,3)")) {
             Calculator().evaluate(source).shouldBeInstanceOf<CalcResult.Err>().error.kind shouldBe EvalError.Kind.ARITY
         }
     }

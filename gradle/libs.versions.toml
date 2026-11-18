@@ -10,6 +10,9 @@ androidxAppcompat = "1.7.0"
 # that supports compileSdk 34 (Compose 1.7+ demands compileSdk 35).
 composeBom = "2024.06.00"
 activityCompose = "1.9.0"
+# On-device (instrumented) tests only — never in the shipped APK.
+androidxTestRunner = "1.5.2"
+androidxTestExtJunit = "1.1.5"
 # ML Kit version pinned here for the throwaway spike (mlkit-spike/), which is NOT
 # a Gradle module — see mlkit-spike/README.md. Kept out of the build on purpose.
 mlkitDigitalInk = "18.1.0"
@@ -34,6 +37,8 @@ androidx-compose-ui = { module = "androidx.compose.ui:ui" }
 androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

@@ -10,6 +10,7 @@ import com.vaibhav.calc.core.num.signum
 import com.vaibhav.calc.core.num.times
 import com.vaibhav.calc.core.num.toBigIntegerExactOrNull
 import java.math.MathContext
+import java.math.RoundingMode
 
 /**
  * Axis tick generation (spec 10.7). Steps are "nice" numbers — 1, 2 or 5 times a
@@ -29,9 +30,10 @@ object Axes {
         require(targetCount >= 1) { "targetCount must be ≥ 1" }
 
         val raw = range / Num.of(targetCount.toLong())
-        // exponent = floor(log10(raw)); exact power of ten from there.
-        val exponent = NumMath.floor(NumMath.log10(raw, mc)).toBigIntegerExactOrNull()
-            ?: throw ArithFault.Overflow("tick exponent out of range")
+        // Tick placement is display geometry over nominal viewport coordinates. It must
+        // not ask a mathematical rounding function to certify an uncertain logarithm.
+        val point = raw.toBigDecimal(mc)
+        val exponent = java.math.BigInteger.valueOf(point.precision().toLong() - point.scale() - 1L)
         val magnitude = NumMath.pow(Num.TEN, Num.of(exponent), mc)
         val normalized = raw / magnitude // in [1, 10)
         val multiplier = when {
@@ -47,7 +49,7 @@ object Axes {
     fun ticks(min: Num, max: Num, targetCount: Int = 10, mc: MathContext = Num.MC): Ticks {
         require(min < max) { "need min < max (got $min, $max)" }
         val step = niceStep(max - min, targetCount, mc)
-        val first = NumMath.ceil(min / step) * step
+        val first = Num.of((min / step).toBigDecimal(mc).setScale(0, RoundingMode.CEILING).toBigIntegerExact()) * step
 
         val values = ArrayList<Num>()
         var v = first

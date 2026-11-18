@@ -34,6 +34,9 @@ object InkRecognizer {
         "√" to listOf(stroke(0f, .55f, .2f, .8f, .4f, 0f, 1f, 0f)),
         "π" to listOf(stroke(0f, .1f, 1f, .1f), stroke(.25f, .1f, .2f, 1f), stroke(.75f, .1f, .75f, .9f, .9f, 1f)),
         "x" to listOf(stroke(0f, 0f, 1f, 1f), stroke(1f, 0f, 0f, 1f)),
+        "y" to listOf(stroke(0f, 0f, .5f, .5f, 1f, 0f), stroke(.5f, .5f, .5f, 1f)),
+        "y" to listOf(stroke(0f, 0f, .3f, .5f, .7f, .5f, 1f, 0f, .7f, .9f, .2f, 1f)),
+        "z" to listOf(stroke(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f)),
         "^" to listOf(stroke(0f, .7f, .5f, 0f, 1f, .7f)),
     )
     private val normalized by lazy { templates.map { (label, paths) -> Triple(label, normalize(paths), paths.size) } }

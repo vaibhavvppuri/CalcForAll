@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.vaibhav.calc"
-version = "1.0.0-preview"
+version = "2.0.0"
 
 kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }

@@ -13,3 +13,5 @@ docs/licenses/** -text
 android/src/main/assets/fonts/OFL-*.txt -text
 LICENSE -text
 THIRD-PARTY-NOTICES.md -text
+# Keep the published privacy policy byte-identical to its bundled legal asset.
+docs/PRIVACY.md -text

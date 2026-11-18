@@ -161,7 +161,7 @@ class Surd private constructor(
 
     override fun toBigDecimal(mc: MathContext): BigDecimal {
         val guard = NumericLimits.guard(mc)
-        val root = BigDecimalMath.sqrt(BigDecimal(radicand), guard)
+        val root = squareRoot(BigDecimal(radicand), guard)
         return coeff.toBigDecimal(guard).multiply(root, guard).round(mc)
     }
 
@@ -235,11 +235,17 @@ class SymConst private constructor(
 // ---------------------------------------------------------------------------
 // Dec — an explicit finite-precision decimal (still BigDecimal, never Double).
 // ---------------------------------------------------------------------------
-class Dec(val value: BigDecimal) : Num {
+class Dec(val value: BigDecimal, val absoluteError: BigDecimal? = null) : Num {
 
-    init { NumericLimits.decimal(value) }
+    init {
+        NumericLimits.decimal(value)
+        absoluteError?.let {
+            if (it.signum() < 0) throw ArithFault.Domain("an absolute error bound must be non-negative", "approx")
+            NumericLimits.decimal(it)
+        }
+    }
 
-    override val isZero: Boolean get() = value.signum() == 0
+    override val isZero: Boolean get() = value.signum() == 0 && absoluteError?.signum() == 0
 
     override fun toBigDecimal(mc: MathContext): BigDecimal {
         NumericLimits.precision(mc)
@@ -251,9 +257,11 @@ class Dec(val value: BigDecimal) : Num {
         else -> compareGeneric(this, other)
     }
 
-    override fun equals(other: Any?): Boolean = other is Dec && value.compareTo(other.value) == 0
+    override fun equals(other: Any?): Boolean = other is Dec && value.compareTo(other.value) == 0 &&
+        (if (absoluteError == null || other.absoluteError == null) absoluteError == other.absoluteError
+        else absoluteError.compareTo(other.absoluteError) == 0)
 
-    override fun hashCode(): Int = value.stripTrailingZeros().hashCode()
+    override fun hashCode(): Int = 31 * value.stripTrailingZeros().hashCode() + (absoluteError?.stripTrailingZeros()?.hashCode() ?: 0)
 
     override fun toString(): String = value.toPlainString()
 }
@@ -296,36 +304,160 @@ private fun rDiv(a: Rational, b: Rational): Rational {
     )
 }
 
-private fun decOf(n: Num): BigDecimal = n.toBigDecimal(Num.MC)
+/**
+ * √x to [mc]. Beyond the range of a double, big-math starts its iteration from x/2 and halves
+ * its way down, so one fifty-digit root of a 20,000-digit radicand took over half a minute
+ * (tenth review). Scaled by an even power of ten into [1, 100) the same root converges at
+ * once, and the power of ten is put back exactly. Ordinary values go straight to big-math, so
+ * their digits are the ones they always were.
+ */
+internal fun squareRoot(x: BigDecimal, mc: MathContext): BigDecimal {
+    if (x.signum() == 0) return BigDecimalMath.sqrt(x, mc)
+    val exponent = NumericLimits.adjustedExponent(x)
+    if (exponent in -300L..300L) return BigDecimalMath.sqrt(x, mc)
+    val half = (if (exponent >= 0) exponent / 2 else -((1 - exponent) / 2)).toInt() // floor(exponent / 2)
+    return BigDecimalMath.sqrt(x.movePointLeft(2 * half), mc).movePointRight(half)
+}
+
+/**
+ * The digits the tower works to: fifty, except while a measuring pass has asked for fewer.
+ *
+ * A rounding function, a true/false statement and a discriminant all hinge on the last digits
+ * of an estimate. How far those can be trusted is measured, by working the same expression out
+ * again more coarsely and seeing how far the answer moves. The functions take their precision
+ * from the session, but the tower's own sums and products had none to give: a value built only
+ * from surds, π and e never moved, so the digits it had lost went unseen and
+ * floor((√101 + 10)(√101 − 10)) read 0 (thirteenth review). A measuring pass now lowers the
+ * tower along with the functions. The setting belongs to the thread doing the measuring and is
+ * always put back; nothing outside a measuring pass ever sees fewer than fifty digits.
+ */
+internal object Tower {
+    private val coarser = ThreadLocal<MathContext>()
+
+    /** The context every rounded tower operation uses. */
+    val mc: MathContext get() = coarser.get() ?: Num.MC
+
+    /** True inside a pass that works to fewer digits than the tower's own. */
+    val measuring: Boolean get() = coarser.get() != null
+
+    /** Runs [block] with the tower working to [precision] digits; fifty or more is the tower as it stands. */
+    fun <T> at(precision: Int, block: () -> T): T {
+        val before = coarser.get()
+        if (precision >= Num.MC.precision) coarser.remove() else coarser.set(MathContext(precision, RoundingMode.HALF_EVEN))
+        try {
+            return block()
+        } finally {
+            if (before == null) coarser.remove() else coarser.set(before)
+        }
+    }
+}
+
+private fun decOf(n: Num): BigDecimal = n.toBigDecimal(Tower.mc)
+
+/**
+ * Leading digits a sum of two exact values may lose to cancellation before they are expanded
+ * further. Inside it an ordinary sum (√2 − 1, π − e) is digit for digit the fifty-digit sum it
+ * always was, and still holds more good digits than the app can show. What such a sum has lost
+ * matters only where an answer hinges on its last digits, and there it is measured ([Tower]).
+ */
+private const val CANCELLATION_SLACK = 10
+
+/** Digits kept beyond the fifty returned, so that the last of those is not decided by rounding noise. */
+internal const val CANCELLATION_GUARD = 10
+
+private const val ABSORBED =
+    "addition needs more than 50 digits to preserve both operands; rearrange or rescale the expression"
+
 private fun decAdd(a: Num, b: Num): Num {
+    val mc = Tower.mc
     val left = decOf(a)
     val right = decOf(b)
-    val sum = left.add(right, Num.MC)
-    if (!a.isZero && !b.isZero && (sum.compareTo(left) == 0 || sum.compareTo(right) == 0)) {
-        throw ArithFault.Unsupported("addition needs more than ${Num.MC.precision} digits to preserve both operands; rearrange or rescale the expression")
+    val sum = left.add(right, mc)
+    // A measuring pass works with fewer digits on purpose: there a swallowed operand is what is being measured.
+    if (!Tower.measuring && left.signum() != 0 && right.signum() != 0 && (sum.compareTo(left) == 0 || sum.compareTo(right) == 0)) {
+        throw ArithFault.Unsupported(ABSORBED)
     }
-    return Dec(sum)
+    // An estimate has no further digits to give: its sums stay at fifty digits.
+    if (a is Dec || b is Dec) return boundedSum(a, b, sum)
+    // Two exact values. (A sum that keeps only a digit or two of the smaller one is NOT refused
+    // here. The tenth pass tried that, for 10^49 + √2 − 10^49 = 1, and the eleventh found it
+    // stopping the engine's own work: a quartic with a π coefficient sampled near a root, a
+    // limit at infinity, −b ± √D for a large D. That case waits for estimates that carry an
+    // error bound; see DECISIONS.)
+    // Two exact values that nearly cancel leave fewer good digits than fifty, and none at all once
+    // they agree that far: √(10^100+1) − 10^50 read 0, for a difference that cannot be zero.
+    val lost = if (sum.signum() == 0) mc.precision.toLong() else
+        maxOf(NumericLimits.adjustedExponent(left), NumericLimits.adjustedExponent(right)) - NumericLimits.adjustedExponent(sum)
+    if (lost <= CANCELLATION_SLACK) return boundedSum(a, b, sum)
+    // Only two surds can cancel exactly: a radicand may still hold a square that trial division did not reach.
+    if (a is Surd && b is Surd && compareSquares(a, b) == 0) return Num.ZERO
+    return boundedSum(a, b, cancellingDifference(
+        lost.toInt(),
+        "subtraction needs more than ${NumericLimits.MAX_EXPANSION_PRECISION} digits to tell the two values apart; rearrange the expression",
+        { a.toBigDecimal(it) },
+        { b.toBigDecimal(it).negate() },
+    ))
+}
+
+private fun boundedSum(a: Num, b: Num, value: BigDecimal): Dec {
+    if ((a is Dec && a.absoluteError == null) || (b is Dec && b.absoluteError == null)) return Dec(value)
+    val largest = maxOf(NumericLimits.adjustedExponent(decOf(a)), NumericLimits.adjustedExponent(decOf(b)))
+    val lost = if (value.signum() == 0) 0 else maxOf(0L, largest - NumericLimits.adjustedExponent(value))
+    val precision = minOf(66L + lost, NumericLimits.MAX_EXPANSION_PRECISION.toLong()).toInt()
+    return a.bounds(precision)!!.add(b.bounds(precision)!!, precision).around(value)
+}
+
+/**
+ * `a − b` where the two nearly cancel, to the tower's fifty digits. Both are expanded until the
+ * difference itself has fifty digits and a guard clear of the last ones kept; [lead] is the first
+ * guess at how many leading digits cancel. Past the widest expansion the answer is a refusal.
+ */
+internal fun cancellingDifference(
+    lead: Int,
+    refusal: String,
+    a: (MathContext) -> BigDecimal,
+    b: (MathContext) -> BigDecimal,
+): BigDecimal {
+    val target = Tower.mc
+    val wanted = target.precision + CANCELLATION_GUARD
+    var precision = wanted + lead
+    while (precision <= NumericLimits.MAX_EXPANSION_PRECISION) {
+        val mc = MathContext(precision, RoundingMode.HALF_EVEN)
+        val left = a(mc)
+        val right = b(mc)
+        val difference = left.subtract(right)
+        // Nothing left at all: double. Otherwise make up exactly the digits the cancellation took.
+        val needed = if (difference.signum() == 0) 2L * precision else wanted +
+            maxOf(NumericLimits.adjustedExponent(left), NumericLimits.adjustedExponent(right)) -
+            NumericLimits.adjustedExponent(difference)
+        if (needed <= precision) return difference.round(target)
+        precision = needed.coerceAtMost(NumericLimits.MAX_EXPANSION_PRECISION + 1L).toInt()
+    }
+    throw ArithFault.Unsupported(refusal)
 }
 private fun decMul(a: Num, b: Num): Num {
     val left = decOf(a)
     val right = decOf(b)
     NumericLimits.decimalProduct(left, right)
-    return Dec(left.multiply(right, Num.MC))
+    val value = left.multiply(right, Tower.mc)
+    val aBounds = a.bounds()
+    val bBounds = b.bounds()
+    return if (aBounds == null || bBounds == null) Dec(value) else aBounds.multiply(bBounds, 66).around(value)
 }
 
 operator fun Num.unaryMinus(): Num = when (this) {
     is Rational -> Rational.of(num.negate(), den)
     is Surd -> Surd.of(Rational.of(coeff.num.negate(), coeff.den), radicand)
     is SymConst -> SymConst.of(Rational.of(coeff.num.negate(), coeff.den), konst)
-    is Dec -> Dec(value.negate())
+    is Dec -> Dec(value.negate(), absoluteError)
 }
 
 operator fun Num.plus(o: Num): Num = when {
     // An estimated zero must not turn the other operand into an exact result.
     // Keep an existing Dec unchanged when the other operand is zero.
     this is Dec || o is Dec -> when {
-        this.isZero && o is Dec -> o
-        o.isZero && this is Dec -> this
+        this !is Dec && this.isZero && o is Dec -> o
+        o !is Dec && o.isZero && this is Dec -> this
         else -> decAdd(this, o)
     }
     this is Rational && o is Rational -> rAdd(this, o)
@@ -341,7 +473,7 @@ operator fun Num.minus(o: Num): Num = this + (-o)
 operator fun Num.times(o: Num): Num = when {
     // A known exact zero is still an exact annihilator for a finite estimate.
     (this.isZero && this !is Dec) || (o.isZero && o !is Dec) -> Num.ZERO
-    this is Dec || o is Dec -> if (this.isZero || o.isZero) Dec(BigDecimal.ZERO) else decMul(this, o)
+    this is Dec || o is Dec -> decMul(this, o)
     this.isZero || o.isZero -> Num.ZERO
     this is Rational && o is Rational -> rMul(this, o)
     this is Rational && o is Surd -> Surd.of(rMul(this, o.coeff), o.radicand)
@@ -367,18 +499,32 @@ fun Num.reciprocal(): Num = when (this) {
     // 1 / (c·√r) = (1 / (c·r)) · √r  — stays a surd.
     is Surd -> Surd.of(rDiv(Num.ONE, rMul(coeff, Num.of(radicand))), radicand)
     // 1 / (c·π) has no closed form here → decimal fallback.
-    is SymConst -> Dec(BigDecimal.ONE.divide(toBigDecimal(Num.MC), Num.MC))
+    is SymConst -> Tower.mc.let {
+        DecimalBounds.point(BigDecimal.ONE).divide(bounds()!!, 66)
+            .around(BigDecimal.ONE.divide(toBigDecimal(it), it))
+    }
     is Dec -> {
+        val enclosure = bounds()
+        if (enclosure?.containsZero == true && absoluteError?.signum() != 0)
+            throw ArithFault.Unsupported("the divisor's uncertainty includes zero")
         if (isZero) throw ArithFault.DivideByZero()
-        Dec(BigDecimal.ONE.divide(value, Num.MC))
+        if (value.signum() == 0) throw ArithFault.Unsupported("the divisor is a zero estimate without established nonzeroness")
+        val reciprocal = BigDecimal.ONE.divide(value, Tower.mc)
+        if (enclosure == null) Dec(reciprocal)
+        else DecimalBounds.point(BigDecimal.ONE).divide(enclosure, 66).around(reciprocal)
     }
 }
 
 operator fun Num.div(o: Num): Num {
+    if (o is Dec && o.absoluteError?.signum() != 0 && o.bounds()?.containsZero == true)
+        throw ArithFault.Unsupported("the divisor's uncertainty includes zero")
     if (o.isZero) throw ArithFault.DivideByZero()
     return when {
         // Exact zero over any known nonzero finite divisor remains exact.
-        this.isZero && this !is Dec -> Num.ZERO
+        this.isZero && this !is Dec -> {
+            o.establishedSign("the divisor of an exact zero")
+            Num.ZERO
+        }
         this is Rational && o is Rational -> rDiv(this, o)
         // (c1·π) / (c2·π) → the constant cancels, back to an exact rational.
         this is SymConst && o is SymConst && konst == o.konst -> rDiv(coeff, o.coeff)
@@ -390,18 +536,63 @@ operator fun Num.div(o: Num): Num {
 // Shared helpers.
 // ===========================================================================
 
+/**
+ * The order of two values of different kinds. Forty digits settle almost every pair. A pair that
+ * agrees that far is never called equal on the strength of its digits: until 1.3 one that agreed
+ * to 320 digits was, so `√(10^700+1) = 10^350` held. Fractions, finite decimals and surds are
+ * compared exactly, through their squares. A multiple of π or e is never equal to a value of
+ * another kind, so more digits always separate the two, and past the widest expansion the
+ * comparison is refused.
+ */
 private fun compareGeneric(a: Num, b: Num): Int {
-    // Compare by decimalisation, widening precision if the two look equal, so a
-    // pair of distinct-but-very-close reals isn't falsely reported equal. If they
-    // still agree past ~320 significant digits, treat them as equal (best effort).
-    var precision = 40
-    repeat(4) {
-        val mc = MathContext(precision, RoundingMode.HALF_EVEN)
-        val c = a.toBigDecimal(mc).compareTo(b.toBigDecimal(mc))
-        if (c != 0) return c
-        precision *= 2
+    val sign = a.signum()
+    if (sign != b.signum()) return sign.compareTo(b.signum())
+    if (sign == 0) return 0
+    apart(a, b, 40)?.let { return it }
+    if (a !is SymConst && b !is SymConst) return if (sign > 0) compareSquares(a, b) else compareSquares(b, a)
+    var precision = 80
+    while (true) {
+        apart(a, b, precision)?.let { return it }
+        if (precision >= NumericLimits.MAX_EXPANSION_PRECISION) {
+            throw ArithFault.Unsupported("the two values agree to $precision digits and cannot be told apart")
+        }
+        precision = minOf(precision * 2, NumericLimits.MAX_EXPANSION_PRECISION)
     }
-    return 0
+}
+
+/** Which is the larger, when the two expansions differ by more than the expansions can be wrong; otherwise null. */
+private fun apart(a: Num, b: Num, precision: Int): Int? {
+    val mc = MathContext(precision, RoundingMode.HALF_EVEN)
+    val x = a.toBigDecimal(mc)
+    val y = b.toBigDecimal(mc)
+    val difference = x.subtract(y)
+    // Each expansion is good to one unit in the last of the digits asked for.
+    val doubt = unitInLastPlace(x, precision).add(unitInLastPlace(y, precision))
+    return if (difference.abs() > doubt) difference.signum() else null
+}
+
+private fun unitInLastPlace(x: BigDecimal, precision: Int): BigDecimal =
+    BigDecimal.ONE.scaleByPowerOfTen((NumericLimits.adjustedExponent(x) - precision + 1).toInt())
+
+/**
+ * |a| against |b| for fractions, finite decimals and surds, exactly: (n/d)·√r becomes n²·r over
+ * d², and the two are cross-multiplied. A decimal is taken at the digits it holds.
+ */
+private fun compareSquares(a: Num, b: Num): Int {
+    val (an, ad, ar) = rootParts(a)
+    val (bn, bd, br) = rootParts(b)
+    return (an * an * ar * bd * bd).compareTo(bn * bn * br * ad * ad)
+}
+
+/** |x| as (numerator, denominator, radicand), all positive. */
+private fun rootParts(x: Num): Triple<BigInteger, BigInteger, BigInteger> = when (x) {
+    is Rational -> Triple(x.num.abs(), x.den, BigInteger.ONE)
+    is Surd -> Triple(x.coeff.num.abs(), x.coeff.den, x.radicand)
+    is Dec -> x.value.abs().let {
+        if (it.scale() >= 0) Triple(it.unscaledValue(), BigInteger.TEN.pow(it.scale()), BigInteger.ONE)
+        else Triple(it.unscaledValue() * BigInteger.TEN.pow(-it.scale()), BigInteger.ONE, BigInteger.ONE)
+    }
+    is SymConst -> throw IllegalArgumentException("a multiple of π or e has no exact square to compare")
 }
 
 fun Num.signum(): Int = when (this) {
@@ -411,12 +602,22 @@ fun Num.signum(): Int = when (this) {
     is Dec -> value.signum()
 }
 
-fun Num.abs(): Num = if (signum() < 0) -this else this
+fun Num.abs(): Num {
+    if (this is Dec) {
+        val enclosure = bounds()
+        if (enclosure?.containsZero == true && absoluteError?.signum() != 0) {
+            val upper = maxOf(enclosure.lower.abs(), enclosure.upper.abs())
+            val midpoint = upper.divide(BigDecimal(2))
+            return Dec(midpoint, midpoint)
+        }
+    }
+    return if (signum() < 0) -this else this
+}
 
 fun Num.toBigIntegerExactOrNull(): BigInteger? = when (this) {
     is Rational -> if (isInteger) num else null
     is Dec -> try {
-        value.toBigIntegerExact()
+        if (absoluteError?.signum() == 0) value.toBigIntegerExact() else null
     } catch (_: ArithmeticException) {
         null
     }

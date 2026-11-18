@@ -4,12 +4,17 @@
 
 CalcForAll is a native Android calculator with a shared Kotlin mathematics engine and an optional local HTTP API. It keeps exact fractions and supported symbolic values, explains errors, and makes equations, units, graphs, and calculation history available in one app.
 
-The Android app's current update is **1.1.0-preview**; the unchanged local API remains **1.0.0-preview**. Its core, graphing, algebra, and input-recognition capabilities have different limits; the [capability matrix](docs/CAPABILITY-MATRIX.md) and [verification record](docs/VERIFICATION.md) distinguish implemented behavior from completed checks. These version numbers do not mean that every feature in the historical v2–v4 roadmap is complete.
+This release is **CalcForAll 2.0.0** for Android and the local API. It adds automatic photo/handwriting calculation previews, spatial math recognition, camera capture and cropping, tracked numerical uncertainty, and API access to the newer engine modules. The [capability matrix](docs/CAPABILITY-MATRIX.md) and [verification record](docs/VERIFICATION.md) distinguish implemented behavior from completed checks. Recognition and symbolic mathematics have documented limits; this is not an unrestricted algebra or word-problem solver.
+
+**Host and device acceptance passed.** Gate10 passed all 1,326 host tests, the full build and 19 packaged-API smoke checks. The same APK passed all 14 device tests on both Android 6 / API 23 and Android 14 / API 34, plus the recorded offline handwriting, camera, correction, rotation and saved-history restart checks. Physical phones, physical styluses and TalkBack remain untested. Graph searches retain their five-second default; polynomial solving has a ten-second allowance with unchanged numerical acceptance checks. Artifact hashes and test receipts are in the [verification record](docs/VERIFICATION.md); the release manifest and archive-audit receipts supply the separate distribution checks.
 
 ## What is included
 
 - Scientific arithmetic: fractions, powers and roots, trigonometry, DEG/RAD/GRAD modes, logarithms, hyperbolic functions, combinatorics, complex values, and scientific/engineering notation.
-- Direct equation and small linear-system solving, with explicit identities, no-solution results, and supported solution steps.
+- Direct equation and small linear-system solving, with explicit identities, no-solution results, and supported solution steps. Polynomial equations up to degree 8 — rational roots and quadratic factors stay exact, remaining real roots are counted with Sturm's theorem, complex roots are checked before they are shown, and anything approximate is marked `≈`.
+- **Everyday tools:** loan EMI, compound and simple interest, SIP, GST added or removed (with the CGST + SGST split), discounts, percent change and bill splitting, a year-by-year loan repayment schedule, the loan a monthly payment can afford and the instalment a savings goal needs; days between dates, adding days, age and weekday; percent of an amount, unit-price comparison, fuel cost, proportion and BMI; adding or subtracting durations and clock times. Rates are always your input; nothing is fetched.
+- Geometry with answers kept exact in π and square roots (a circle of radius 5 has area 25π, shown with its decimal beside it), arithmetic and geometric sequences, business maths (margin and markup, the price for a target margin, break-even, yearly growth rate), and quartiles with the interquartile range and mode. Also numbers and cheque amounts in words (in lakh and crore, and in millions), sharing an amount in a ratio, and inflation. A power written on a unit belongs to the unit (`5 m^2` is five square metres), and a device test exercises every catalogued tool operation. Current Android runtime acceptance is recorded separately; historical device passes do not verify this APK.
+- **Study tools:** linear systems of up to six unknowns and matrix eigenvalues in the Matrices tool, numerical solving of supported real equations on a range, tables of values, sums (Σ) and products (Π), prime factors/GCD/LCM/divisors, vectors, exact binomial plus Poisson and normal probabilities, quadratic/exponential/power/logarithmic curve fits, Taylor polynomials, numerical limits (labelled as estimates, not proofs) and bitwise logic in any base.
 - Structured entry for fractions, powers, roots and functions; an atomic Ans chip; searchable functions; editing and clipboard controls.
 - Local calculation history with linked references, transactional edits, undo, and persistence. Changing the angle mode does not reinterpret earlier rows.
 - Graphs with multiple curves, pan/pinch zoom, editable ranges, trace, roots and intersections. Undefined samples remain gaps; numerical root search reports its limits.
@@ -17,14 +22,15 @@ The Android app's current update is **1.1.0-preview**; the unchanged local API r
 - Unit arithmetic in main entry and conversions through the Units tool/API, Indian units and digit grouping, Devanagari numerals, physical constants with uncertainty, matrices up to 6 × 6, descriptive statistics, linear regression, and integer base conversion.
 - Bounded symbolic simplification, expansion, factorisation, differentiation and supported antiderivatives. Finite proper numerical integration is available in the shared core, local API and Tools, with an approximation marker and estimated error. Native adapter/device verification is recorded in `docs/VERIFICATION.md`.
 - Light, dark, AMOLED and system themes, plus portrait and landscape layouts.
-- Optional **experimental** finger/stylus entry, now with **One symbol** and **Spaced line** modes. **Read line** proposes an editable, unverified draft from spaced symbols on one baseline, with per-symbol alternatives and explicit review before use. This is bounded local geometry matching, not trained whole-equation recognition.
-- Photo text uses a bundled on-device OCR model; the 1.1 update lets you select a detected line for editing or restore the full recognized text, including multi-line equation systems. Every expression requires review before calculation. It is not a general photo-math or word-problem solver.
+- **Write & calculate:** draw with a finger or stylus. Math layout proposes an editable expression and calculates it after pen-up; powers, stacked fractions, square-root scope and equations have bounded geometry support. One symbol and Spaced line remain available, with symbol alternatives, undo/redo, erasing and stylus-only filtering. Recognition is local template matching, not a general trained handwriting model.
+- **Photo calculator:** take a photo or choose an image, crop/rotate it, inspect the editable transcription and see an automatic calculated preview. Bundled on-device OCR feeds the same spatial math reader. Raw text and individual detected lines stay available for correction. Only **Save reviewed calculation** writes the result to history.
+- The local API retains its additive `/v1` contract and now exposes finance, dates/time, words, vectors, number theory, probability, curve fitting, quartiles, Taylor/limits, tables/series, bitwise operations and matrix eigenvalue operations.
 
 The calculator does not need an account, a subscription, a paid API, or a running server. Arithmetic and the supplied OCR model run locally. The Android manifest removes internet and network-state permissions and disables automatic app backup. Google's ML Kit SDK has its own terms and general metrics behavior, described in the [privacy policy](docs/PRIVACY.md); those terms are not replaced by this project's license.
 
 ## Quick start
 
-Install the supplied debug APK on a compatible Android device, or build it from source below. This preview targets Android 6.0 / API 23 and newer; check the verification record for the Android versions actually tested. It is not an assertion of testing on every phone.
+Install the supplied debug APK on a compatible Android device, or build it from source below. The app targets Android 6.0 / API 23 and newer; check the verification record for the Android versions actually tested. It is not an assertion of testing on every phone.
 
 Type with the keypad, or use **Edit** for text entry. Press **=** to calculate. Examples:
 
@@ -34,12 +40,15 @@ Type with the keypad, or use **Edit** for text entry. Press **=** to calculate. 
 sqrt(8)          → 2√2
 sin(30)          → 0.5 in DEG mode
 x^2-5x+6=0       → x = 2, 3
+x^3-6x^2+11x-6=0 → x = 1, 2, 3
 5 km+300 m       → 5.3 km
 5→A             → store 5 in register A
 A+2             → 7
 ```
 
 Flick upward on **÷** for a root, **×** for a power, **−** for a fraction, or **.** for π. The functions sheet also offers structures without gestures. History entries can be copied for editing or inserted as live `#n` references. Graph and Tools are available from the main screen. Calculus uses radians even when ordinary scientific evaluation uses degrees.
+
+For images, open **Tools → Photo calculator → Take photo / Choose image**. For ink, open **Tools → Write & calculate** and draw separate, neat symbols. A preview appears automatically; check the transcription and choose **Save reviewed calculation**. Previewing does not alter Ans, registers or existing history rows. The angle mode shown on these screens is the current calculator mode.
 
 ## Build and test
 
@@ -57,11 +66,15 @@ Set `ANDROID_HOME` to your Android SDK or create an untracked `local.properties`
 # Android adapter tests, static checks, and installable debug APK
 ./gradlew :android:testDebugUnitTest :android:lintDebug :android:assembleDebug
 
+# Device gate: engine/tool workflows, bundled OCR, capture URI and image decoding.
+# Needs an emulator or phone attached; run it on the oldest supported Android.
+./gradlew :android:connectedDebugAndroidTest
+
 # Optional local server
 ./gradlew :api:run
 ```
 
-The debug APK is produced at `android/build/outputs/apk/debug/android-debug.apk`. It is signed with a development key, not a Play Store production signing identity. The API defaults to `127.0.0.1:8080`; `:api:distZip` creates `api/build/distributions/api-1.0.0-preview.zip`. Its complete contract and local distribution commands are in [API.md](docs/API.md).
+The debug APK is produced at `android/build/outputs/apk/debug/android-debug.apk`. It is signed with a development key, not a Play Store production signing identity. The API defaults to `127.0.0.1:8080`; `:api:distZip` creates `api/build/distributions/api-2.0.0.zip`. Its complete contract and local distribution commands are in [API.md](docs/API.md).
 
 The B1 fixture is included at `battery/fixtures/B1-v1.6.json`; tests no longer depend on a developer's Downloads folder. All three batteries run by default. A case classified `PROBE` records an exploratory/unsupported comparison and is not a passing assertion. Asserted failures fail the Gradle task. Read the generated battery reports alongside the JUnit reports rather than treating a harness invocation as proof that every mathematical case passed.
 
@@ -71,9 +84,15 @@ When no Android SDK is configured, `settings.gradle.kts` excludes `:android`; `:
 
 The engine stores exact rationals, supported surds, and rational multiples of π/e; approximate computations use `BigDecimal` with explicit precision. Floating-point geometry is confined to the visual/ink boundary. “Exact-first” does not mean every result has a symbolic closed form.
 
+Exact rationals and supported symbolic values retain their exact representation. A decimal estimate can carry a conservative absolute error bound; legacy or sampled estimates may instead have unknown accuracy. Arithmetic and supported elementary kernels propagate established bounds. When uncertainty affects the displayed digits, the result shows a visible error radius; a discontinuous decision such as rounding must be supported by the interval. Merely evaluating twice and obtaining similar digits is not a proof of accuracy. Reusable expression syntax and the API preserve known bounds rather than silently turning an estimate into an exact literal. See [NUMERIC-LIMITS.md](docs/NUMERIC-LIMITS.md) for the current scope and refusals.
+
+Polynomial solving supports degree at most 8 with exact rational coefficients (including exact common-factor cancellation), plus explicitly written products of separately supported factors. Unsupported uncertain or irrational coefficients receive a typed explanation. Written positive powers preserve repeated factors; close roots are not merged by a numerical tolerance. Numerical solving on a range samples that range and can miss roots that lie very close together or only touch zero. Taylor polynomials approximate a function near one point, and numerical limits are estimates from sampled values — an oscillating function is reported as not settling rather than given a number. Money tools are currency-neutral arithmetic on the rates you enter; they are not financial advice, and real loans, taxes and investments have terms this app does not know.
+
 Symbolic operations deliberately support a bounded subset of real algebra and calculus. Unsupported expressions return a typed explanation. Domain conditions remain part of symbolic answers. Definite integration estimates, 2D/3D graph sampling and numerical root searches are not proofs of completeness or rigorous error bounds. The 3D view represents a single real height `z` at each sampled `(x,y)`; general implicit or parametric surfaces are outside this preview. See [SYMBOLIC.md](docs/SYMBOLIC.md) and [NUMERIC-LIMITS.md](docs/NUMERIC-LIMITS.md).
 
-The Latin OCR model recognises printed text, not general two-dimensional mathematical layout. Detected-line selection preserves the OCR characters; it does not silently repair ambiguous `O`/`0`, infer fraction layout or reconstruct superscripts. Review signs, exponents, decimal points and fractions before using the text. The handwriting line draft supports spaced digits and a small operator/symbol set on one baseline, with at most 32 glyphs. It refuses detected ambiguous layouts and unsupported top matches; this is not proof that every accepted draft is correct. Stacked fractions, superscripts, radical bars and general multi-line handwriting remain unsupported.
+The Latin OCR model recognizes printed characters; a separate bounded layout reader interprets positions, powers, fraction rules and radical scope. Any transcription can be wrong. Close alternatives, unclear layouts and unsupported symbols are surfaced for correction; ambiguous O/0 is not silently repaired. Page rules can resemble fraction bars, and missing overbars can change a root's scope. Keep one expression in the crop and review it before saving.
+
+Handwriting uses local geometric templates for digits, common operators, parentheses, square roots, π and x/y/z, with at most 64 strokes, 12,000 points and 64 spatial tokens. Clear separated writing is the intended input. General cursive, arbitrary handwritten words, diagrams, unrestricted page layouts and automatic natural-language word-problem solving are outside this release. Device fixture checks are not a population recognition-accuracy benchmark.
 
 ## Repository map
 

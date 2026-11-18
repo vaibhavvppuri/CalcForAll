@@ -32,8 +32,9 @@ class ApproximateZeroSpec : StringSpec({
     "zero division preserves approximate inputs and still refuses a zero divisor" {
         decimal(estimate / Num.TWO, "0")
         decimal(estimate / Dec(BigDecimal("2")), "0")
-        shouldThrow<ArithFault.DivideByZero> { Num.ONE / estimate }
-        shouldThrow<ArithFault.DivideByZero> { estimate / estimate }
+        shouldThrow<ArithFault.Unsupported> { Num.ONE / estimate }
+        shouldThrow<ArithFault.Unsupported> { estimate / estimate }
+        shouldThrow<ArithFault.DivideByZero> { Num.ONE / Dec(BigDecimal.ZERO, BigDecimal.ZERO) }
     }
 
     "exact-only zero algebra remains exact including irrational denominators" {
@@ -47,7 +48,8 @@ class ApproximateZeroSpec : StringSpec({
         (surd - surd).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
         (Num.ZERO * Dec(BigDecimal("7"))).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
         (Dec(BigDecimal("7")) * Num.ZERO).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
-        (Num.ZERO / Dec(BigDecimal("2"))).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
+        (Num.ZERO / Dec(BigDecimal("2"), BigDecimal.ZERO)).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
+        shouldThrow<ArithFault.Unsupported> { Num.ZERO / Dec(BigDecimal("2")) }
         (Num.ZERO * estimate).shouldBeInstanceOf<Rational>() shouldBe Num.ZERO
     }
 

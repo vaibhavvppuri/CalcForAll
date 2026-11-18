@@ -95,7 +95,7 @@ object Functions {
         real("pow", 2, "x to the power y"),
         real("exp", 1, "e to the power x"),
         real("sq", 1, "square", "square"),
-        real("approx", 1, "explicit approximate real value"),
+        Fn("approx", setOf(1, 2), Kind.REAL, emptyList(), "approx(value), or approx(value, absolute error bound)"),
 
         // logarithms
         real("ln", 1, "natural logarithm"),

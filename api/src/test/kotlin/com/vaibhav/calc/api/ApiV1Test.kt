@@ -33,7 +33,18 @@ class ApiV1Test : StringSpec({
                 response.json().field("ok") shouldBe JsonValue.Bool(true)
             }
             client.get("/v1/functions").bodyAsText() shouldContain "sin"
-            client.get("/v1/constants").bodyAsText() shouldContain "uncertainty"
+            val constants = client.get("/v1/constants").json()
+            val mathematical = constants.field("mathematical").items()
+            val gamma = mathematical.single { it.field("name").text() == "gamma" }
+            gamma.field("approximate") shouldBe JsonValue.Bool(true)
+            gamma.field("uncertainty").field("kind").text() shouldBe "unknown"
+            gamma.field("input").text() shouldContain "approx("
+            mathematical.single { it.field("name").text() == "pi" }.field("uncertainty").field("kind").text() shouldBe "exact"
+            val gravity = constants.field("physical").items().single { it.field("symbol").text() == "G" }
+            gravity.field("exact") shouldBe JsonValue.Bool(false)
+            gravity.field("uncertaintyMeaning").text() shouldContain "not a hard error bound"
+            gravity.field("evaluationUncertainty").field("kind").text() shouldBe "unknown"
+            gravity.field("input").text() shouldContain "approx("
             client.get("/v1/units").bodyAsText() shouldContain "affine"
         }
     }

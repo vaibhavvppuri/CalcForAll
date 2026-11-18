@@ -1,0 +1,107 @@
+{
+  "evaluation": "Pass recognized/layout transcription into the real calculator; compare semantic value/roots/solution, not display punctuation. Record raw OCR, layout result, warnings and final calculation. Do not substitute expectedExpression into the recognition path.",
+  "width": 1200,
+  "generatedWith": "Windows System.Drawing",
+  "cases": [
+    {
+      "sha256": "322cd0227d57987e46621aebe15a6c33685fe4324a8f44025a5b51e473865797",
+      "bytes": 8598,
+      "id": "addition",
+      "purpose": "Plain printed arithmetic",
+      "expectedExpression": "12+34",
+      "expectedKind": "value",
+      "expectedExact": "46",
+      "image": "01-addition.png"
+    },
+    {
+      "sha256": "b72db4d275a1ea4c4031cad1812b6b1cd3b468b3a94f96ff2b1a25d4c195c2f2",
+      "bytes": 10380,
+      "id": "parentheses",
+      "purpose": "Explicit multiplication and grouping",
+      "expectedExpression": "6*(7-2)",
+      "expectedKind": "value",
+      "expectedExact": "30",
+      "image": "02-parentheses.png"
+    },
+    {
+      "sha256": "5206e84dd526cad0b3d6ad12f322e9d797b9f8a53db4551de8057d14c74b54d0",
+      "bytes": 7866,
+      "id": "root_integer",
+      "purpose": "Narrow Unicode radical followed by two OCR digit symbols",
+      "expectedExpression": "sqrt(16)",
+      "expectedKind": "value",
+      "expectedExact": "4",
+      "image": "03-root-integer.png"
+    },
+    {
+      "sha256": "5de8334eb8788768cd7c59f0f422217a344e462bcd4fe1c75f2f2215ed9287a9",
+      "bytes": 8393,
+      "equivalentDisplay": [
+        "1.2",
+        "6/5"
+      ],
+      "id": "root_decimal",
+      "purpose": "A complete decimal radicand",
+      "expectedExpression": "sqrt(1.44)",
+      "expectedKind": "value",
+      "expectedExact": "6/5",
+      "image": "04-root-decimal.png"
+    },
+    {
+      "sha256": "07f8b588a2c13d1886f81851ad6d89147102c6b5b53b3aeb9e17e54e1cfa2ee2",
+      "bytes": 7048,
+      "id": "raised_power",
+      "purpose": "Geometrically raised exponent; no literal caret in the image",
+      "expectedExpression": "2^3+1",
+      "expectedKind": "value",
+      "expectedExact": "9",
+      "image": "05-raised-power.png"
+    },
+    {
+      "bytes": 11094,
+      "id": "quadratic",
+      "expectedRoots": [
+        "2",
+        "3"
+      ],
+      "purpose": "A geometrically raised exponent in a printed equation",
+      "expectedVariables": [
+        "x"
+      ],
+      "expectedExpression": "x^2-5x+6=0",
+      "expectedKind": "roots",
+      "sha256": "04298ba609a5efefc3bb37bc3abca90d74fe10a106809618e3cb98627f725a70",
+      "image": "06-quadratic-equation.png"
+    },
+    {
+      "sha256": "c37bf0bfefcc075afd349ee14eb63f83b2cfb2610035e96b270ace0dec179afc",
+      "bytes": 7432,
+      "id": "stacked_fractions",
+      "purpose": "Actual horizontal fraction rules with numerator and denominator on separate baselines",
+      "expectedExpression": "1/2+1/3",
+      "expectedKind": "value",
+      "expectedExact": "5/6",
+      "image": "07-stacked-fractions.png"
+    },
+    {
+      "expectedSolution": {
+        "x": "3",
+        "y": "2"
+      },
+      "bytes": 10462,
+      "id": "equation_system",
+      "purpose": "Two separate equation rows; layout may refuse, but raw multiline OCR can still reach the system solver",
+      "expectedExpression": "x+y=5\nx-y=1",
+      "expectedKind": "system",
+      "sha256": "306768e43d3e3f08548869ed725f80c2bec5244c8cde9f2a5e24031df99f9b94",
+      "image": "08-equation-system.png"
+    }
+  ],
+  "source": "Generated locally from explicit known-answer mathematical expressions, not photographs or user data",
+  "schema": 1,
+  "corpus": "Synthetic printed math QA fixtures",
+  "font": "Cambria Math",
+  "synthetic": true,
+  "height": 640,
+  "accuracyBenchmark": false
+}

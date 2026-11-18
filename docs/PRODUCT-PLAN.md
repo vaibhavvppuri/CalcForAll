@@ -118,6 +118,87 @@ Among the five, CalcForAll and Calc for Everyone tie for best clarity and purpos
 
 Official listings confirming the crowded naming landscape are [Calculator for All: Solves](https://apps.apple.com/us/app/calculator-for-all-solves/id1394359548), [AllCalc - Calculator](https://play.google.com/store/apps/details?id=com.nervone.AllCalc), [EveryCalc](https://apps.apple.com/au/app/everycalc/id6759590989), and the [AllMath developer catalog](https://play.google.com/store/apps/developer?hl=en&id=AllMath). They establish existing names, not an assessment of those products' quality. AllCalc, EveryCalc and AllMath Calculator were weakened by this check. No app was installed, account created or store submission made for this research.
 
+## Version 1.2 increment — priorities (12 November 2026)
+
+The owner asked for the next version "with more", said everything worth building should be built, and asked that the order be decided with the same DPCC methods. Evidence is still **Tier C**: one owner brief plus a source audit, with no survey or telemetry. So MoSCoW is the scope decision, Kano categories are hypotheses, and the scores are engineering judgments on the weights used above: `Score = 0.40U + 0.25Q + 0.20R + 0.15E`.
+
+The release requirements at the top of this document are Musts and were not scored. Every addition ships with tests, runs offline, refuses what it cannot do with a typed message, and is described by its real limits.
+
+| Rank | Work | U | Q | R | E | Weighted /10 | MoSCoW for 1.2 | Kano hypothesis | Outcome |
+|---:|---|---:|---:|---:|---:|---:|---|---|---|
+| 1 | Everyday money tools: EMI, interest, SIP, GST, discount, percent change, bill split | 9 | 9 | 6 | 8 | 8.25 | Should | Performance for everyday users | Built |
+| 2 | Polynomial equations to degree 8, plus numerical solving on a range | 9 | 7 | 8 | 6 | 7.85 | Should | Performance for students | Built |
+| 3 | Table of values, sums (Σ) and products (Π) | 7 | 9 | 6 | 9 | 7.60 | Should | Performance | Built |
+| 4 | More everyday tools: loan affordability and savings goal, percent of, unit price, fuel cost, proportion, BMI, durations and clock times | 8 | 9 | 4 | 8 | 7.45 | Should | Performance for everyday users | Built |
+| 5 | Linear systems up to six unknowns, matrix eigenvalues, loan repayment schedule | 7 | 9 | 6 | 7 | 7.30 | Should | Performance | Built |
+| 6 | Date tools: days between, add days, age, weekday | 7 | 9 | 4 | 9 | 7.20 | Should | Attractive | Built |
+| 7 | Vectors | 6 | 9 | 5 | 8 | 6.85 | Could | Performance for students | Built |
+| 7 | Number theory: prime factors, GCD/LCM, divisors | 6 | 9 | 5 | 8 | 6.85 | Could | Attractive | Built |
+| 9 | Inline unit conversion (`5 km to m`) | 8 | 6 | 7 | 3 | 6.55 | Could | Attractive | Deferred — see below |
+| 10 | More regression models: quadratic, exponential, power, logarithmic | 6 | 8 | 5 | 7 | 6.45 | Could | Performance | Built |
+| 10 | Probability distributions: binomial, Poisson, normal | 7 | 7 | 5 | 6 | 6.45 | Could | Performance | Built |
+| 12 | Programmer bitwise logic | 5 | 9 | 4 | 8 | 6.25 | Could | Attractive | Built |
+| 13 | Taylor polynomials and numerical limits | 7 | 5 | 7 | 3 | 5.90 | Could | Attractive | Built, as labelled approximations and estimates |
+| 14 | Full Hindi interface | 7 | 5 | 4 | 4 | 5.45 | Won't in this increment | Performance for Hindi-first users | Deferred |
+| 14 | General handwritten/photo mathematical layout recognition | 9 | 2 | 6 | 1 | 5.45 | Won't in this increment | Attractive | Deferred |
+| 16 | Graph sliders, parametric and polar curves | 7 | 4 | 5 | 4 | 5.40 | Could, later | Attractive | Deferred |
+
+What the ranking did and did not decide:
+
+- **Inline conversion was first scored 7.50** (Q 8, E 6) and looked like the fourth item. Reading the code changed the estimate: history entries are parsed by the tape itself for dependency analysis before they reach the router, so `to` has to become grammar — handled by the parser, the tape, the formatter and the API — not a router shortcut. Re-scored honestly (Q 6, E 3) it is 6.55, and it was deferred rather than half-built. The Units tool still converts.
+- **Graph upgrades and the Hindi interface lost on Q, not on value.** The owner chose tests + lint + APK as this increment's verification, with no emulator pass. Both are almost entirely screen work that unit tests cannot see, so their quality could not be established here.
+- **General handwriting/photo recognition** is unchanged from the earlier assessment: valuable, but there is no offline trained model whose accuracy could be measured in this increment.
+- Ties were broken by dependency and reuse. The data-driven tool catalogue was built once for item 1 and made the later items cheap, which is why so many "Could" items were delivered. The fourth and fifth rows were added during the build — the fourth once the first pack showed how little each further everyday tool cost, the fifth once the polynomial solver existed and eigenvalues became a matter of handing it a characteristic polynomial. Both were scored on the same scale rather than slipped in unranked.
+
+Value-engineering cross-check (`value points / effort points`, the DPCC sheet's ratio; the points are assumptions, as above): money tools 13/3 = 4.33; table and series 8/2 = 4.00; dates 5/2 = 2.50; polynomial solver 13/8 = 1.63; Taylor and limits 8/8 = 1.00; inline conversion 8/13 = 0.62. The ratio agrees with the weighted order at both ends.
+
+## Version 1.3 increment (12 November 2026, evening)
+
+With about forty minutes of the session left, the owner asked for the next version to be started. What it holds was chosen the same way as before, from what could be built **and tested** in that time. Same weights, same Tier C caveat.
+
+| Rank | Work | U | Q | R | E | Weighted /10 | MoSCoW for 1.3 | Kano hypothesis | Outcome |
+|---:|---|---:|---:|---:|---:|---:|---|---|---|
+| 1 | Geometry, exact in π and square roots | 8 | 8 | 5 | 8 | 7.40 | Should | Performance for students | Built |
+| 2 | Business maths: margin, markup, break-even, growth rate | 7 | 9 | 4 | 9 | 7.20 | Should | Performance for shopkeepers and small businesses | Built |
+| 3 | Sequences: arithmetic and geometric | 6 | 9 | 4 | 9 | 6.80 | Could | Performance for students | Built |
+| 4 | Quartiles, interquartile range and mode | 6 | 8 | 4 | 8 | 6.40 | Could | Performance | Built |
+
+The owner then told the session to carry on and improve 1.3 as far as it could. The time went first to correctness and verification, because a wrong answer costs more than a missing tool: three further review passes, a grammar correction for powers on units, and a device gate on Android 6 and Android 14 emulators (all in [VERIFICATION.md](VERIFICATION.md)). After that, three small additions were ranked and built the same way:
+
+| Rank | Work | U | Q | R | E | Weighted /10 | MoSCoW for 1.3 | Kano hypothesis | Outcome |
+|---:|---|---:|---:|---:|---:|---:|---|---|---|
+| 1 | Numbers and cheque amounts in words, in lakh and crore | 7 | 9 | 3 | 8 | 6.85 | Could | Attractive for everyday users | Built |
+| 2 | Share an amount in a ratio | 6 | 9 | 3 | 9 | 6.60 | Could | Performance for students | Built |
+| 3 | Inflation: future price and buying power | 6 | 8 | 3 | 9 | 6.35 | Could | Attractive | Built |
+
+Considered and left for later because they could not be verified well enough in the time: a triangle solver from sides and angles, coordinate geometry, and a recurring-deposit calculator (banks' compounding conventions differ, so one formula would be wrong for some of them).
+
+The ninth to twelfth review passes added one item of a different kind, an engine decision and not a feature: **an approximate value that knows how many of its digits are good.** Every limitation those passes left open (rounding that looks like a value next to zero, `10^49+sqrt(2)-10^49` answering 1, an estimate in `Ans` that cannot be rechecked) comes from a decimal that carries no error bound. It would replace the measured allowance of 1.3 with a tracked one. It is a change to the number tower, so it is the owner's call (Article 3), and it should come before any more work on rounding. The thirteenth and fourteenth passes made the case stronger. The measure is now taken in five computations for a rounding function and in up to four sessions for a statement, each rule in it answers a case the one before got wrong, and the second of the two reviews still found the first's corrections fooled. Two of their choices are also the owner's to confirm: a measuring pass may lower the tower's own precision (recorded in DECISIONS), and a power of π or e above the 64th is taken from a wider expansion, which leaves exponent laws across that line undecided where they were True.
+
+Still the first things to do next, in this order: a review pass over the fourteenth-pass corrections, which have none; the owner's ruling on an error-carrying decimal, before any more rules are added to the measure; run the device gate, and look at the tool screens, on a physical phone; inline unit conversion (`5 km to m`); the new engine modules as local API operations; graph sliders and parametric/polar curves; the Hindi interface. General handwritten and photo layout recognition and an unrestricted algebra system remain outside what can be verified offline here, which is why this is numbered 1.3 and not presented as the historical roadmap's v2.
+
 ## Method sources
 
 The user's current answers establish the product constraints and delegation. The supplied historical calculator chats/specifications establish the intended feature families. The current repository establishes what already exists. The user's DPCC cheat sheet supplies MoSCoW, value/effort and Kano definitions; its safely extracted text was used without treating an absence of survey responses as data. The Working Engine and Hustle Engine supplied the weighted comparison and countercheck method. Scores and effort assumptions above are planning judgments, and should be revisited when actual implementation or user evidence changes them.
+
+## Resumed integration toward 2.0 (13 November 2026)
+
+The owner supplied the completed Claude Code 6 export and explicitly resumed work. The source baseline is commit `de28ab9`, Android `1.3.0-preview`; the saved HTML is reference evidence, not an instruction source. A complete git bundle was made before editing. The attached ZIP contains browser export assets, not another calculator repository. Static extraction and local Defender scans reported no detections; no saved HTML or JavaScript was executed.
+
+The latest owner brief changes the release priorities: a photo or new ink should produce a calculated preview automatically, while the transcription stays visible and correctable. Saving still requires the user to review the recognized expression. The existing offline/no-upload/no-charge constraints remain. The owner delegates the numeric architecture decision identified in the previous review; we are implementing tracked decimal uncertainty rather than adding more proximity-to-integer guesses.
+
+Same Tier C evidence and weighted method as above: `0.40U + 0.25Q + 0.20R + 0.15E`. Kano labels remain hypotheses, not survey results.
+
+| Work | U | Q | R | E | Weighted /10 | MoSCoW | Kano hypothesis | Acceptance gate |
+|---|---:|---:|---:|---:|---:|---|---|---|
+| Numerical uncertainty, cancellation and finance stability | 10 | 8 | 10 | 5 | 8.75 | Must | Must-be | Exact behavior retained; uncertain rounding/comparison refused; reusable bounds survive memory/API/copy; tiny nonzero rates remain nonzero |
+| One preview/save path for recognized math | 10 | 9 | 10 | 8 | 9.45 | Must | Performance | Auto-answer belongs to visible input; private evaluation context; no hidden history/register writes; reviewed save is atomic |
+| Camera capture, crop, orientation and bundled OCR | 10 | 8 | 8 | 7 | 8.65 | Must | Performance | First-use offline recognition, capture/cancel/import/crop checks; only private capture directory shared; temporary files removed |
+| Spatial ink and OCR layout | 10 | 6 | 9 | 4 | 7.85 | Must for documented grammar | Performance | Powers, fractions, roots and equations on fixtures; ambiguity/candidate correction; strict resource limits; unsupported layouts explicit |
+| API parity with new reusable engine modules | 7 | 9 | 9 | 8 | 8.05 | Should | Attractive | Additive v1 endpoints, bounded inputs, error and known-answer integration tests; local distribution smoke test |
+| Handwriting undo, redo, eraser and stylus filtering | 8 | 8 | 7 | 8 | 7.80 | Should | Performance | Actual touch workflow, mode changes, rejected input and stale-result clearing |
+| General cursive/page/word-problem solving | 9 | 2 | 6 | 1 | 5.45 | Won't in this bounded release | Attractive | No licensed, verified, small offline model currently integrated; never advertise template matching as general recognition |
+
+The higher preview score does not override its dependence on numerical correctness. Work proceeds in parallel where files and interfaces are independent. Internal milestones are **1.4 reliability**, **1.5 input workflows**, and **2.0 integrated delivery**. These are acceptance stages, not three renamed copies of the same APK. No milestone is marked complete before its test/device evidence exists. The old 11 November overnight deadline does not apply to this explicitly resumed session.
+
+The number 2.0 denotes the new integrated workflow and release, not completion of every speculative v2-v4 feature in the historical chat. A bounded mathematical grammar, explicit uncertainty and documented unsupported inputs remain essential to a dependable calculator.

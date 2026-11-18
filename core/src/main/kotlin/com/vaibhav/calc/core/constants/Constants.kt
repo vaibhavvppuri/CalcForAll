@@ -4,6 +4,7 @@ import com.vaibhav.calc.core.eval.RealValue
 import com.vaibhav.calc.core.eval.Value
 import com.vaibhav.calc.core.eval.toValue
 import com.vaibhav.calc.core.num.Konst
+import com.vaibhav.calc.core.num.Dec
 import com.vaibhav.calc.core.num.Num
 import com.vaibhav.calc.core.num.NumMath
 import com.vaibhav.calc.core.num.SymConst
@@ -13,6 +14,7 @@ import com.vaibhav.calc.core.units.Dimension
 import com.vaibhav.calc.core.units.Quantity
 import com.vaibhav.calc.core.units.Units
 import java.math.MathContext
+import java.math.BigDecimal
 
 /**
  * Physical constants with CODATA values + uncertainty (spec 9.4) and math
@@ -70,9 +72,10 @@ object Constants {
         Physical("Avogadro constant", "NA", Num.ofDecimal("6.02214076e23"), Num.ZERO, "1/mol", Dimension.NONE / Dimension.AMOUNT),
         Physical("molar gas constant", "R", Num.ofDecimal("8.31446261815324"), Num.ZERO, "J/(mol·K)", JOULE / Dimension.AMOUNT / Dimension.TEMPERATURE),
         Physical("standard gravity", "g0", Num.ofDecimal("9.80665"), Num.ZERO, "m/s²", Dimension.LENGTH / Dimension.TIME.pow(2)),
-        Physical("Newtonian gravitation", "G", Num.ofDecimal("6.67430e-11"), Num.ofDecimal("0.00015e-11"), "m³/(kg·s²)", Dimension.LENGTH.pow(3) / Dimension.MASS / Dimension.TIME.pow(2)),
-        Physical("electron mass", "me", Num.ofDecimal("9.1093837139e-31"), Num.ofDecimal("0.0000000028e-31"), "kg", Dimension.MASS),
-        Physical("proton mass", "mp", Num.ofDecimal("1.67262192595e-27"), Num.ofDecimal("0.00000000052e-27"), "kg", Dimension.MASS),
+        // A standard measurement uncertainty is statistical, not a guaranteed interval.
+        Physical("Newtonian gravitation", "G", Dec(BigDecimal("6.67430e-11")), Num.ofDecimal("0.00015e-11"), "m³/(kg·s²)", Dimension.LENGTH.pow(3) / Dimension.MASS / Dimension.TIME.pow(2)),
+        Physical("electron mass", "me", Dec(BigDecimal("9.1093837139e-31")), Num.ofDecimal("0.0000000028e-31"), "kg", Dimension.MASS),
+        Physical("proton mass", "mp", Dec(BigDecimal("1.67262192595e-27")), Num.ofDecimal("0.00000000052e-27"), "kg", Dimension.MASS),
     )
 
     private val byKey: Map<String, Physical> = physical.associateBy { it.symbol.lowercase() }
@@ -87,7 +90,7 @@ object Constants {
         "e" -> SymConst.of(Num.ONE, Konst.E)
         "tau" -> SymConst.of(Num.TWO, Konst.PI)
         "phi" -> (Num.ONE + NumMath.sqrt(Num.of(5), mc)) / Num.TWO // golden ratio
-        "gamma", "euler" -> Num.ofDecimal("0.57721566490153286060") // Euler–Mascheroni
+        "gamma", "euler" -> Dec(BigDecimal("0.57721566490153286060")) // stored approximation, not an exact decimal constant
         "sqrt2" -> NumMath.sqrt(Num.TWO, mc)
         else -> null
     }

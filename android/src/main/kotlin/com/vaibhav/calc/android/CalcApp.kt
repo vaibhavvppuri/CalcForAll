@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +49,7 @@ fun CalcApp() {
     val session = remember { CalcSession() }
     var ui by remember { mutableStateOf(session.ui) }
     var theme by remember { mutableStateOf("SYSTEM") }
-    var screen by remember { mutableStateOf<String?>(null) }
+    var screen by rememberSaveable { mutableStateOf<String?>(null) }
     var toolInsertionError by remember { mutableStateOf<String?>(null) }
     var initialized by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -59,7 +60,24 @@ fun CalcApp() {
     var latestSnapshot by remember { mutableStateOf<SessionSnapshot?>(null) }
     var graphEnvironment by remember { mutableStateOf(com.vaibhav.calc.core.eval.Environment()) }
     var openEdit by remember { mutableStateOf(false) }
+    var recognitionSaving by remember { mutableStateOf(false) }
     fun act(action: () -> CalcUiState) { actions.trySend(SessionAction(action)) }
+    fun saveRecognition(text: String, from: String) {
+        if (recognitionSaving) return
+        recognitionSaving = true
+        act {
+            try {
+                val saved = session.saveRecognition(text)
+                scope.launch {
+                    if (screen == from) {
+                        if (saved.accepted) screen = null
+                        else toolInsertionError = saved.state.notice ?: "The calculation could not be saved."
+                    }
+                }
+                saved.state
+            } finally { scope.launch { recognitionSaving = false } }
+        }
+    }
 
     LaunchedEffect(session) {
         val saved = withContext(Dispatchers.IO) { store.load() }
@@ -256,8 +274,8 @@ fun CalcApp() {
                     onHandwriting = { screen = "ink" }, onPhoto = { screen = "photo" }, onSurface = { screen = "surface" })
             }
             "graph" -> GraphScreen(session.settings, ui.entryText, graphEnvironment, onClose = { screen = null })
-            "ink" -> HandwritingScreen(onClose = { screen = null }, onUse = { text -> act { session.replaceText(text) }; screen = null })
-            "photo" -> PhotoScreen(onClose = { screen = null }, onUse = { text -> act { session.replaceText(text) }; screen = null })
+            "ink" -> HandwritingScreen(session.settings, graphEnvironment, saving = recognitionSaving, onClose = { screen = null }, onUse = { saveRecognition(it, "ink") })
+            "photo" -> PhotoScreen(session.settings, graphEnvironment, saving = recognitionSaving, onClose = { screen = null }, onUse = { saveRecognition(it, "photo") })
             "legal" -> LegalScreen(onClose = { screen = "settings" })
             "surface" -> SurfaceScreen(session.settings, onClose = { screen = null }, environment = graphEnvironment)
         }
@@ -277,7 +295,7 @@ private fun AppHeader(count: Int, history: () -> Unit, graph: () -> Unit, tools:
         Column(Modifier.weight(1f)) {
             Text("CalcForAll", fontFamily = CalcFonts.PlexSans, color = p.ink, fontSize = 17.sp, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Text("OFFLINE · EXACT FIRST", color = p.ink3, fontSize = 8.sp, letterSpacing = 1.sp, maxLines = 1)
+            Text("OFFLINE · EXACT FIRST", color = p.ink3, fontSize = 8.sp, lineHeight = 11.sp, letterSpacing = 1.sp, maxLines = 1)
         }
         TextButton(onClick = history, modifier = Modifier.width(48.dp).semantics { contentDescription = "History, $count calculations" }, contentPadding = PaddingValues(4.dp)) { Text("#$count", fontSize = 12.sp, maxLines = 1) }
         TextButton(onClick = graph, modifier = Modifier.width(56.dp), contentPadding = PaddingValues(4.dp)) { Text("Graph", fontSize = 12.sp, maxLines = 1) }
@@ -290,7 +308,16 @@ private fun AppHeader(count: Int, history: () -> Unit, graph: () -> Unit, tools:
 private fun DisplayStrip(ui: CalcUiState, onSd: () -> Unit, onCursor: (com.vaibhav.calc.core.entry.Cursor) -> Unit,
     onCopy: () -> Unit, onSteps: () -> Unit, modifier: Modifier) {
     val p = LocalCalcPalette.current
-    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp),
+    val scroll = rememberScrollState()
+    // A new answer is read from its first digit.
+    LaunchedEffect(ui.exact, ui.error) { scroll.scrollTo(0) }
+    // A long answer runs past the strip and scrolls. It has to say so: found on a device, where
+    // the 51 digits of floor(pi×10^50) ended in a line cut off by the keys with nothing to show
+    // that the answer, and its decimal reading, continued below. The cues have rows of their own
+    // so that they never lie over a digit.
+    Column(modifier) {
+    if (scroll.canScrollBackward) ScrollCue("▴ more above")
+    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.End) {
         ui.editingId?.let { Text("Editing $it", color = p.amber2, fontSize = 12.sp) }
         MathEntry(ui.editor, onCursor, Modifier.heightIn(min = 32.dp))
@@ -309,6 +336,15 @@ private fun DisplayStrip(ui: CalcUiState, onSd: () -> Unit, onCursor: (com.vaibh
         }
         if (ui.error != null) Text(ui.error, color = p.amber2, fontSize = 12.sp, textAlign = TextAlign.End)
     }
+    if (scroll.canScrollForward) ScrollCue("▾ more below")
+    }
+}
+
+@Composable
+private fun ScrollCue(text: String) {
+    val p = LocalCalcPalette.current
+    Text(text, color = p.amber2, fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.End,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp))
 }
 
 @Composable

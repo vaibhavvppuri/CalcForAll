@@ -59,6 +59,7 @@ fun Application.calcModule() {
         get("/v1/functions") { call.respondJson(ApiService.functions()) }
         get("/v1/constants") { call.respondJson(ApiService.constants()) }
         get("/v1/units") { call.respondJson(ApiService.units()) }
+        get("/v1/tool-catalog") { call.respondJson(ApiTools.catalog()) }
         get("/eval") {
             call.handleApi(permits) {
                 val input = call.request.queryParameters["expr"] ?: badRequest("missing query parameter 'expr'")

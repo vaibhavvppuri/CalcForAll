@@ -52,7 +52,7 @@ class D036RefNodeSpec : StringSpec({
         s = Editor.insert(s, "2")
         s.root.nodes.size shouldBe 1
         s.root.nodes[0].shouldBeInstanceOf<Fraction>().numerator.nodes shouldBe listOf(Ref(1))
-        s.toInput() shouldBe "(#1)/(2)"
+        s.toInput() shouldBe "((#1)/(2))"
     }
 
     "D-036.2: the power key captures the reference as ONE operand" {
@@ -60,7 +60,7 @@ class D036RefNodeSpec : StringSpec({
         s = Editor.typePower(s)
         s = Editor.insert(s, "3")
         s.root.nodes[0].shouldBeInstanceOf<Power>().base.nodes shouldBe listOf(Ref(2))
-        s.toInput() shouldBe "(#2)^(3)"
+        s.toInput() shouldBe "((#2)^(3))"
     }
 
     "D-036.2: typed text builds the same node the badge builds" {

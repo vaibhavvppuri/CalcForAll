@@ -16,10 +16,14 @@ import com.vaibhav.calc.core.error.EvalError
 import com.vaibhav.calc.core.num.ArithFault
 import com.vaibhav.calc.core.num.Complex
 import com.vaibhav.calc.core.num.Dec
+import com.vaibhav.calc.core.num.NumericLimits
 import com.vaibhav.calc.core.num.Konst
 import com.vaibhav.calc.core.num.Num
 import com.vaibhav.calc.core.num.NumMath
+import com.vaibhav.calc.core.num.Rational
+import com.vaibhav.calc.core.num.bounds
 import com.vaibhav.calc.core.num.SymConst
+
 import com.vaibhav.calc.core.num.abs
 import com.vaibhav.calc.core.num.div
 import com.vaibhav.calc.core.num.minus
@@ -34,7 +38,10 @@ import com.vaibhav.calc.core.name.ReservedNames
 import com.vaibhav.calc.core.source.SourceSpan
 import com.vaibhav.calc.core.units.Quantity
 import com.vaibhav.calc.core.units.Units
+import java.math.BigDecimal
 import java.math.BigInteger
+import java.util.IdentityHashMap
+
 
 /**
  * Walks an [Expr] tree and produces an exact-first [Value] (real or complex).
@@ -45,20 +52,21 @@ import java.math.BigInteger
 class Evaluator(
     private val settings: Settings,
     private val env: Environment,
-    /**
-     * Explicit bindings for equation unknowns, used by the graph layer to evaluate
-     * `f(x)` at a sample point. Empty by default, so ordinary evaluation still
-     * refuses a bare `x` — the static partition (D-016.4) is unchanged and this is
-     * scoped to the caller rather than being hidden state.
-     */
+    /** Explicit equation-variable bindings, isolated from user registers. */
     private val unknownBindings: Map<String, Num> = emptyMap(),
 ) {
+    /** Compatibility with old extraction callers; error bounds replace measuring passes. */
+    internal constructor(settings: Settings, env: Environment, measuring: Boolean) : this(settings, env)
+
     private class EvalException(val error: EvalError) : RuntimeException(error.message)
 
     /** Current recursion depth, bounded by [MAX_EVAL_DEPTH]. */
     private var depth = 0
+    /** Completed nodes from this evaluation only; identity rules never re-evaluate a subtree. */
+    private val nodeValues = IdentityHashMap<Expr, Value>()
 
     fun eval(expr: Expr): CalcResult<Value> = try {
+        nodeValues.clear()
         CalcResult.Ok(evalNode(expr))
     } catch (e: EvalException) {
         CalcResult.Err(e.error)
@@ -87,7 +95,7 @@ class Evaluator(
         }
         depth++
         try {
-            return when (e) {
+            val value = when (e) {
                 is NumberLit -> RealValue(e.value)
                 is NameRef -> resolveName(e)
                 is Unary -> when (e.op) {
@@ -99,6 +107,8 @@ class Evaluator(
                 is Call -> evalCall(e)
                 is UnitApply -> evalUnitApply(e)
             }
+            nodeValues[e] = value
+            return value
         } finally {
             depth--
         }
@@ -175,7 +185,10 @@ class Evaluator(
             node = node.left
         }
         var acc = evalNode(node) // the leftmost leaf — the innermost value
-        for (idx in spine.indices.reversed()) acc = evalBinary(spine[idx], acc)
+        for (idx in spine.indices.reversed()) {
+            acc = evalBinary(spine[idx], acc)
+            nodeValues[spine[idx]] = acc
+        }
         return acc
     }
 
@@ -202,6 +215,10 @@ class Evaluator(
 
         val r = evalNode(e.right)
         return spanned(e.span) {
+            if (l is RealValue && r is RealValue) {
+                ExactIdentities.binary(e, l.num, r.num, settings) { (nodeValues[it] as? RealValue)?.num }
+                    ?.let { return@spanned RealValue(it) }
+            }
             when (e.op) {
                 BinaryOp.ADD -> ValueOps.add(l, r)
                 BinaryOp.SUB -> ValueOps.sub(l, r)
@@ -213,8 +230,16 @@ class Evaluator(
     }
 
     private fun evalCall(e: Call): Value {
-        val args = e.args.map { evalNode(it) }
-        return spanned(e.span) { applyFunction(e, args) }
+        // A discrete decision may use all available digits, in ONE evaluation.
+        // Stored values keep their original bounds; no coarser probes or snapping are used.
+        val precise = if (e.name.lowercase() in ROUNDING && settings.computePrecision < NumericLimits.MAX_SESSION_PRECISION)
+            Evaluator(settings.copy(computePrecision = NumericLimits.MAX_SESSION_PRECISION), env, unknownBindings).also { it.depth = depth }
+        else this
+        val args = e.args.map { precise.evalNode(it) }
+        return spanned(e.span) {
+            ExactIdentities.call(e, settings) { (precise.nodeValues[it] as? RealValue)?.num }
+                ?.let { RealValue(it) } ?: applyFunction(e, args)
+        }
     }
 
     private fun applyFunction(call: Call, args: List<Value>): Value {
@@ -280,9 +305,6 @@ class Evaluator(
         }
     }
 
-    // -----------------------------------------------------------------------
-    // The real function registry (D3). Angle-taking functions honour the mode.
-    // -----------------------------------------------------------------------
     private fun applyRealFunction(name: String, args: List<Num>, call: Call): Num {
         val mc = settings.computeMc
         val n = args.size
@@ -294,7 +316,21 @@ class Evaluator(
             "pow" -> { need(2); NumMath.pow(args[0], args[1], mc) }
             "exp" -> { need(1); NumMath.exp(args[0], mc) }
             "sq", "square" -> { need(1); args[0] * args[0] }
-            "approx" -> { need(1); Dec(args[0].toBigDecimal(mc)) }
+            "approx" -> {
+                if (n !in 1..2) throw EvalException(EvalError.Arity(call.name, "1 or 2", n, call.span))
+                val point = (args[0] as? Rational)?.toExactBigDecimalOrNull() ?: args[0].toBigDecimal(mc)
+                if (n == 1) Dec(point)
+                else {
+                    val error = args[1] as? Rational
+                        ?: throw ArithFault.Unsupported("an absolute error bound must be an exact non-negative number")
+                    if (error.signum() < 0) throw ArithFault.Domain("an absolute error bound must be non-negative", "approx")
+                    val extra = error.toExactBigDecimalOrNull() ?: error.toBigDecimal(java.math.MathContext(66, java.math.RoundingMode.CEILING))
+                    val original = args[0].bounds()
+                        ?: throw ArithFault.Unsupported("cannot replace unknown uncertainty with an asserted smaller bound")
+                    val conversionError = maxOf(point.subtract(original.lower).abs(), original.upper.subtract(point).abs())
+                    Dec(point, conversionError.add(extra))
+                }
+            }
 
             "ln" -> { need(1); NumMath.ln(args[0], mc) }
             "log" -> when (n) {
@@ -324,13 +360,20 @@ class Evaluator(
             "npr", "perm" -> { need(2); NumMath.nPr(args[0], args[1]) }
             "ncr", "comb", "choose" -> { need(2); NumMath.nCr(args[0], args[1]) }
 
-            "sign", "sgn", "signum" -> { need(1); Num.of(args[0].signum().toLong()) }
+            "sign", "sgn", "signum" -> { need(1); NumMath.sign(args[0]) }
+            // The answer hinges on the last digits of an estimate: see NumMath's rounding family.
             "int", "trunc" -> { need(1); NumMath.truncate(args[0]) }
-            "frac" -> { need(1); NumMath.frac(args[0]) }
+            "frac" -> {
+                need(1)
+                NumMath.frac(args[0])
+            }
             "floor" -> { need(1); NumMath.floor(args[0]) }
             "ceil" -> { need(1); NumMath.ceil(args[0]) }
             "round" -> { need(1); NumMath.round(args[0]) }
-            "mod" -> { need(2); NumMath.mod(args[0], args[1]) }
+            "mod" -> {
+                need(2)
+                NumMath.mod(args[0], args[1])
+            }
             "min" -> { need(2); NumMath.min(args[0], args[1]) }
             "max" -> { need(2); NumMath.max(args[0], args[1]) }
             "gcd" -> { need(2); NumMath.gcd(args[0], args[1]) }
@@ -409,6 +452,8 @@ class Evaluator(
     }
 
     private companion object {
+        /** The functions whose answer hinges on the last digits of their argument. */
+        val ROUNDING = setOf("int", "trunc", "frac", "floor", "ceil", "round", "mod")
         val HUNDRED: Value = RealValue(Num.of(100))
 
         /**

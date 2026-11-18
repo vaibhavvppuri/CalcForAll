@@ -49,6 +49,13 @@ object ReservedNames {
 
     fun isUnit(name: String): Boolean = Units.get(name) != null
 
+    /**
+     * `lakh`, `crore`, `dozen`: unit-table entries that carry no dimension. They are part of
+     * the number — `5 lakh` IS 500000 — so a power written after one raises the whole number,
+     * where a power written after a dimensioned unit belongs to the unit (`5 m^2`).
+     */
+    fun isNumberScale(name: String): Boolean = Units.get(name)?.dimension?.isDimensionless == true
+
     fun kindOf(name: String): NameKind = when {
         isUnknown(name) -> NameKind.UNKNOWN
         isConstant(name) -> NameKind.CONSTANT

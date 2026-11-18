@@ -6,10 +6,12 @@ import com.vaibhav.calc.core.ast.Expr
 import com.vaibhav.calc.core.ast.ExprStatement
 import com.vaibhav.calc.core.ast.Statement
 import com.vaibhav.calc.core.ast.Binary
+import com.vaibhav.calc.core.ast.BinaryOp
 import com.vaibhav.calc.core.ast.Call
 import com.vaibhav.calc.core.ast.NameRef
 import com.vaibhav.calc.core.ast.NumberLit
 import com.vaibhav.calc.core.ast.Postfix
+import com.vaibhav.calc.core.ast.PostfixOp
 import com.vaibhav.calc.core.ast.Unary
 import com.vaibhav.calc.core.ast.UnitApply
 import com.vaibhav.calc.core.error.CalcResult
@@ -17,20 +19,37 @@ import com.vaibhav.calc.core.error.EvalError
 import com.vaibhav.calc.core.eval.ComplexValue
 import com.vaibhav.calc.core.eval.Environment
 import com.vaibhav.calc.core.eval.Evaluator
+import com.vaibhav.calc.core.eval.ExactIdentities
+import com.vaibhav.calc.core.eval.QuantityValue
 import com.vaibhav.calc.core.eval.RealValue
 import com.vaibhav.calc.core.eval.Settings
 import com.vaibhav.calc.core.eval.Value
 import com.vaibhav.calc.core.eval.asQuantity
 import com.vaibhav.calc.core.name.ReservedNames
 import com.vaibhav.calc.core.num.ArithFault
+import com.vaibhav.calc.core.num.Complex
+import com.vaibhav.calc.core.num.Dec
 import com.vaibhav.calc.core.num.Num
+import com.vaibhav.calc.core.num.NumMath
+import com.vaibhav.calc.core.num.NumericLimits
+import com.vaibhav.calc.core.num.Tower
+import com.vaibhav.calc.core.num.div
+import com.vaibhav.calc.core.num.bounds
+import com.vaibhav.calc.core.num.establishedSign
+import com.vaibhav.calc.core.num.toBigIntegerExactOrNull
+import com.vaibhav.calc.core.num.minus
 import com.vaibhav.calc.core.num.unaryMinus
 import com.vaibhav.calc.core.parse.Parser
 import com.vaibhav.calc.core.solve.Extraction
 import com.vaibhav.calc.core.solve.LinearForm
+import com.vaibhav.calc.core.solve.Poly
+import com.vaibhav.calc.core.solve.PolynomialRoots
 import com.vaibhav.calc.core.solve.Solvers
+import com.vaibhav.calc.core.solve.StructureExtractor
 import com.vaibhav.calc.core.solve.structureExtractor
 import com.vaibhav.calc.core.source.SourceSpan
+import com.vaibhav.calc.core.units.Units
+import java.math.BigDecimal
 
 /** What the router worked out the input *was*. */
 sealed interface Outcome {
@@ -144,6 +163,7 @@ class ExpressionRouter(
     private companion object {
         const val MAX_EQUATION_NODES = 512
         const val MAX_EQUATION_DEPTH = 64
+
     }
 
     private fun routeSingle(s: Statement): RouteResult = when (s) {
@@ -184,7 +204,14 @@ class ExpressionRouter(
             if (r is CalcResult.Err) return RouteResult.Err(r.error)
             val lv = (l as CalcResult.Ok).value
             val rv = (r as CalcResult.Ok).value
-            return RouteResult.Ok(Outcome.Verdict(valuesEqual(lv, rv)))
+            if (ExactIdentities.same(eq.lhs, eq.rhs) &&
+                (eq.lhs is NameRef || (knownUncertainty(lv) && knownUncertainty(rv))))
+                return RouteResult.Ok(Outcome.Verdict(true))
+            return when (valuesEqual(lv, rv)) {
+                Same.YES -> RouteResult.Ok(Outcome.Verdict(true))
+                Same.UNDECIDED -> throw ArithFault.Unsupported(undecided())
+                Same.NO -> RouteResult.Ok(Outcome.Verdict(false))
+            }
         }
 
         // Two or more unknowns in ONE equation → underdetermined. Never silently
@@ -216,21 +243,85 @@ class ExpressionRouter(
             is Extraction.Extracted -> rhs.value
         }
         val diff = lp - rp // solve diff = 0
+        // Preserve an explicitly written repeated factor. Expanding (x-e)^2 first
+        // loses its exact dependency and cannot establish that its discriminant is zero.
+        val poweredSide = when { rp.degree == -1 -> eq.lhs; lp.degree == -1 -> eq.rhs; else -> null }
+        if (poweredSide != null && diff.degree <= PolynomialRoots.MAX_DEGREE) writtenFactors(poweredSide, u, extractor)?.let { return RouteResult.Ok(it) }
         return when (diff.degree) {
             -1 -> RouteResult.Ok(Outcome.Identity(u))
-            0 -> RouteResult.Ok(Outcome.NoSolution(u))
+            0 -> if (diff.coeff(0).establishedSign("the constant equation") == 0)
+                RouteResult.Ok(Outcome.Identity(u)) else RouteResult.Ok(Outcome.NoSolution(u))
             1 -> {
                 val res = Solvers.linear(diff.coeff(1), diff.coeff(0), settings)
                 RouteResult.Ok(Outcome.Roots(u, listOf(RealValue(res.root)), res.steps))
             }
             2 -> {
-                val res = Solvers.quadratic(diff.coeff(2), diff.coeff(1), diff.coeff(0), settings)
+                val a = diff.coeff(2)
+                val b = diff.coeff(1)
+                val c = diff.coeff(0)
+                val res = Solvers.quadratic(a, b, c, settings)
+                RouteResult.Ok(Outcome.Roots(u, res.roots, res.steps))
+            }
+            in 3..PolynomialRoots.MAX_DEGREE -> {
+                // 1.2: exact rational roots first, then exact quadratic factors, then
+                // Sturm-counted real roots and residual-checked complex roots.
+                val res = PolynomialRoots.solve(diff, settings)
                 RouteResult.Ok(Outcome.Roots(u, res.roots, res.steps))
             }
             else -> RouteResult.Err(
-                EvalError.Unsupported("degree ${diff.degree} equations are not supported (linear and quadratic only)", eq.span),
+                EvalError.Unsupported(
+                    "degree ${diff.degree} equations are not supported (polynomial equations up to degree ${PolynomialRoots.MAX_DEGREE})",
+                    eq.span,
+                ),
             )
         }
+    }
+
+    /** Solve written polynomial products/powers before expansion erases their dependencies. */
+    private fun writtenFactors(expression: Expr, unknown: String, extractor: StructureExtractor): Outcome? {
+        if (expression !is Binary || expression.op !in setOf(BinaryOp.MUL, BinaryOp.POW)) return null
+        val leaves = ArrayList<Expr>()
+        fun collect(node: Expr) {
+            if (node is Binary && node.op == BinaryOp.MUL) {
+                collect(node.left); collect(node.right)
+            } else if (node is Binary && node.op == BinaryOp.POW && extractor.unknownsIn(node.right).isEmpty()) {
+                val power = ((evaluate(node.right) as? CalcResult.Ok)?.value as? RealValue)?.num?.toBigIntegerExactOrNull()
+                if (power != null && power.signum() > 0 && power <= java.math.BigInteger.valueOf(PolynomialRoots.MAX_DEGREE.toLong()))
+                    collect(node.left)
+                else leaves += node
+            } else leaves += node
+        }
+        collect(expression)
+        if (leaves.size == 1 && leaves.single() === expression) return null
+        val roots = ArrayList<Value>()
+        for (leaf in leaves) {
+            // Polynomial extraction is mandatory: a denominator hole cannot be cancelled here.
+            val factor = (extractor.poly(leaf, unknown) as? Extraction.Extracted)?.value ?: return null
+            val part: List<Value> = when (factor.degree) {
+                -1 -> return Outcome.Identity(unknown)
+                0 -> {
+                    if (factor.coeff(0).establishedSign("the constant factor") == 0) return Outcome.Identity(unknown)
+                    emptyList()
+                }
+                1 -> listOf(RealValue(Solvers.linear(factor.coeff(1), factor.coeff(0), settings).root))
+                2 -> Solvers.quadratic(factor.coeff(2), factor.coeff(1), factor.coeff(0), settings).roots
+                in 3..PolynomialRoots.MAX_DEGREE -> PolynomialRoots.solve(factor, settings).roots
+                else -> return null
+            }
+            roots += part
+        }
+        fun exact(value: Value) = when (value) {
+            is RealValue -> value.num !is Dec
+            is ComplexValue -> value.cx.re !is Dec && value.cx.im !is Dec
+            is QuantityValue -> false
+        }
+        val distinct = ArrayList<Value>()
+        for (root in roots) if (!exact(root) || distinct.none { exact(it) && it == root }) distinct += root
+        val ordered = distinct.filterIsInstance<RealValue>().sortedWith { a, b -> a.num.compareTo(b.num) } +
+            distinct.filter { it !is RealValue }
+        return if (ordered.isEmpty()) Outcome.NoSolution(unknown) else Outcome.Roots(unknown, ordered, listOf(
+            "A polynomial product is zero when one of its factors is zero; solve the written factors separately",
+            "Positive integer powers have their base's roots, reported once without tolerance-based merging"))
     }
 
     private fun routeSystem(equations: List<Equation>, span: SourceSpan): RouteResult {
@@ -295,18 +386,35 @@ class ExpressionRouter(
         return RouteResult.Ok(Outcome.SystemSolution(unknowns, res.solution, res.steps))
     }
 
-    // -----------------------------------------------------------------------
-
-    /** Shared with the graph layer — one rule, one implementation (Article 12). */
     private fun extractor() = structureExtractor(settings, env)
-
     private fun evaluate(e: Expr): CalcResult<Value> = Evaluator(settings, env).eval(e)
 
-    private fun valuesEqual(a: Value, b: Value): Boolean = when {
-        a is RealValue && b is RealValue -> a.num.compareTo(b.num) == 0
-        a is ComplexValue || b is ComplexValue ->
-            a is ComplexValue && b is ComplexValue &&
-                a.cx.re.compareTo(b.cx.re) == 0 && a.cx.im.compareTo(b.cx.im) == 0
+    private enum class Same { YES, NO, UNDECIDED }
+    private fun knownUncertainty(value: Value): Boolean {
+        fun known(n: Num) = n !is Dec || n.absoluteError != null
+        return when (value) {
+            is RealValue -> known(value.num)
+            is ComplexValue -> known(value.cx.re) && known(value.cx.im)
+            is QuantityValue -> known(value.q.value)
+        }
+    }
+    private fun undecided() =
+        "the sides' uncertainty overlaps or is unknown; it cannot be said whether they are equal"
+
+    private fun valuesEqual(a: Value, b: Value): Same = when {
+        a is RealValue && b is RealValue -> same(a.num, b.num)
+        a is ComplexValue || b is ComplexValue -> {
+            // As points in the plane, a real value being one with no imaginary part. Compared part
+            // by part against the size of the whole number: the rounding left in the imaginary
+            // part of (cos 20° + i·sin 20°)⁹ is small beside 1, not beside itself. One part that
+            // plainly differs settles it, whatever the other does (eleventh review).
+            val x = complexOf(a)
+            val y = complexOf(b)
+            if (x == null || y == null) Same.NO
+            else {
+                both(same(x.re, y.re), same(x.im, y.im))
+            }
+        }
         // At least one side carries a unit. Compare through the SAME promotion
         // ValueOps uses, so `5 lakh = 500000` is true (both dimensionless, equal
         // base value) while `5 km = 5` stays false (LENGTH vs dimensionless).
@@ -315,8 +423,30 @@ class ExpressionRouter(
         else -> {
             val qa = a.asQuantity()
             val qb = b.asQuantity()
-            qa.unit.dimension == qb.unit.dimension && qa.toBase().compareTo(qb.toBase()) == 0
+            if (qa.unit.dimension != qb.unit.dimension) Same.NO else same(qa.toBase(), qb.toBase())
         }
+    }
+
+    private fun complexOf(v: Value): Complex? = when (v) {
+        is ComplexValue -> v.cx
+        is RealValue -> Complex.real(v.num)
+        else -> null
+    }
+
+    private fun both(p: Same, q: Same): Same = when {
+        p == Same.NO || q == Same.NO -> Same.NO
+        p == Same.YES && q == Same.YES -> Same.YES
+        else -> Same.UNDECIDED
+    }
+
+    /** Exact equality or disjoint established intervals; proximity is never a proof. */
+    private fun same(a: Num, b: Num): Same {
+        if (a !is Dec && b !is Dec) return if (a.compareTo(b) == 0) Same.YES else Same.NO
+        val left = a.bounds() ?: return Same.UNDECIDED
+        val right = b.bounds() ?: return Same.UNDECIDED
+        if (left.upper < right.lower || right.upper < left.lower) return Same.NO
+        return if (left.lower.compareTo(left.upper) == 0 && right.lower.compareTo(right.upper) == 0 &&
+            left.lower.compareTo(right.lower) == 0) Same.YES else Same.UNDECIDED
     }
 
     private fun faultToError(f: ArithFault, span: SourceSpan): EvalError = when (f) {

@@ -93,7 +93,7 @@ fun SurfaceScreen(settings: Settings, onClose: () -> Unit, environment: Environm
                     TextButton(onClick = onClose) { Text("Calculator") }
                 }
                 Text("Real z = f(x, y) · ${settings.angle} · sampled wireframe", fontSize = 12.sp)
-                OutlinedTextField(input, { input = it.take(4096); error = null }, label = { Text("Expression in x and y") },
+                OutlinedTextField(input, { input = it.take(4096); error = null }, keyboardOptions = MathKeyboard, label = { Text("Expression in x and y") },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp), maxLines = 3,
                     trailingIcon = { TextButton(enabled = !busy, onClick = ::plot) { Text("Plot") } })
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
@@ -110,7 +110,7 @@ fun SurfaceScreen(settings: Settings, onClose: () -> Unit, environment: Environm
                             listOf(labels.first, labels.second).forEachIndexed { col, label ->
                                 val i = row * 2 + col
                                 OutlinedTextField(boundsText[i], { next -> boundsText = boundsText.toMutableList().also { it[i] = next.take(40) } },
-                                    label = { Text(label) }, singleLine = true, modifier = Modifier.weight(1f))
+                                    keyboardOptions = MathKeyboard, label = { Text(label) }, singleLine = true, modifier = Modifier.weight(1f))
                             }
                         }
                     }
@@ -166,8 +166,8 @@ fun SurfaceScreen(settings: Settings, onClose: () -> Unit, environment: Environm
                     Text(data.grid.warnings.joinToString(" "), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedTextField(traceX, { traceX = it.take(80); trace = null }, label = { Text("Trace x") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(traceY, { traceY = it.take(80); trace = null }, label = { Text("Trace y") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(traceX, { traceX = it.take(80); trace = null }, keyboardOptions = MathKeyboard, label = { Text("Trace x") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(traceY, { traceY = it.take(80); trace = null }, keyboardOptions = MathKeyboard, label = { Text("Trace y") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 TextButton(enabled = plottedSurface != null && !busy && !traceBusy, onClick = {
                     val f = plottedSurface ?: return@TextButton

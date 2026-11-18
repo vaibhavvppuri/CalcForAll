@@ -13,6 +13,13 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/CalcAppTheme"
         android:supportsRtl="true">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.capture"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/capture_paths" />
+        </provider>
         <!-- The same keypad adapts to portrait and landscape. -->
         <activity
             android:name=".MainActivity"

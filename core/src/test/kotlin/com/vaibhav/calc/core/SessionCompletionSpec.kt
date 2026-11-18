@@ -19,7 +19,7 @@ class SessionCompletionSpec : StringSpec({
         s.root.nodes shouldBe listOf(Ans)
         s.toInput() shouldBe "ans"
         Editor.backspace(s).toInput() shouldBe ""
-        Editor.insert(Editor.typeFraction(s), "2").toInput() shouldBe "(ans)/(2)"
+        Editor.insert(Editor.typeFraction(s), "2").toInput() shouldBe "((ans)/(2))"
         Editor.moveLeft(s).cursor shouldBe Cursor(offset = 0)
         Editor.moveRight(Editor.moveLeft(s)).cursor shouldBe s.cursor
     }

@@ -7,6 +7,8 @@ import com.vaibhav.calc.core.num.div
 import com.vaibhav.calc.core.num.minus
 import com.vaibhav.calc.core.num.plus
 import com.vaibhav.calc.core.num.times
+import com.vaibhav.calc.core.num.requireKnownPoint
+import com.vaibhav.calc.core.num.establishedSign
 import java.math.MathContext
 
 /**
@@ -33,6 +35,7 @@ object Stats {
 
     fun describe(data: List<Num>, mc: MathContext): Descriptive {
         if (data.isEmpty()) throw ArithFault.Domain("no data to summarise", "stats")
+        data.forEach { it.requireKnownPoint("descriptive statistics") }
         val n = data.size
         var sum: Num = Num.ZERO
         for (x in data) sum = sum + x
@@ -71,6 +74,7 @@ object Stats {
     fun linearRegression(points: List<Pair<Num, Num>>, mc: MathContext): Regression {
         val n = points.size
         if (n < 2) throw ArithFault.Domain("need at least two points for regression", "regression")
+        points.forEach { (x, y) -> x.requireKnownPoint("regression"); y.requireKnownPoint("regression") }
         val bigN = Num.of(n.toLong())
         var sx: Num = Num.ZERO
         var sy: Num = Num.ZERO
@@ -91,11 +95,12 @@ object Stats {
             denomY += dy * dy
             cov += dx * dy
         }
-        if (denomX.isZero) throw ArithFault.Domain("regression is undefined (all x are equal)", "regression")
+        if (denomX.establishedSign("predictor variance") == 0) throw ArithFault.Domain("regression is undefined (all x are equal)", "regression")
         val slope = cov / denomX
         val intercept = meanY - slope * meanX
 
         val rDenomSq = denomX * denomY
+        rDenomSq.establishedSign("correlation denominator")
         val r = if (rDenomSq.isZero) null else cov / NumMath.sqrt(rDenomSq, mc)
         val r2 = if (rDenomSq.isZero) null else (cov * cov) / rDenomSq // exact for rational data
 

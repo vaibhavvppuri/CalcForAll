@@ -1,5 +1,7 @@
 # CalcForAll local API
 
+Release **2.0.0** keeps the additive **v1** wire protocol. `/v1/capabilities` distinguishes `releaseVersion` from `apiVersion`; existing endpoint paths and numeric machine fields remain available.
+
 The optional JVM server uses the **same `:core` calculator as the Android app**. It does not call an external service, require an account, upload inputs, or charge for calculations. The Android app does not need this server to run.
 
 The server is stateless: every calculation receives a fresh calculator. A register supplied by one request is never available to another. There is no database or API history. Application error logs omit formulas, bodies, and register values.
@@ -28,7 +30,7 @@ Build dependencies are downloaded during the first development build. Once built
 
 ## Request and result contract
 
-Use `Content-Type: application/json` for all versioned POST endpoints. Send mathematical values as strings to preserve their digits and exact expressions. Ordinary JSON numbers are accepted in numeric fields, but JavaScript callers may round their own numbers before sending them. Configuration integers such as `samples` and `from` are JSON integers.
+Use `Content-Type: application/json` for all versioned POST endpoints. Send mathematical values as strings to preserve their digits and exact expressions. Ordinary JSON numbers are accepted in numeric fields, but JavaScript callers may round their own numbers before sending them. Configuration integers such as `samples`, base-conversion `from`, `months`, and `order` are JSON integers. Finite-series bounds named `from`/`to` are mathematical whole numbers and may instead be expression strings.
 
 ```json
 {"expr":"9007199254740993+1"}
@@ -38,7 +40,19 @@ The response contains `ok: true`, `result.kind: "scalar"`, and `result.value.exa
 
 Evaluated outcomes additionally expose `result.approximate` for the displayed primary answer. This is true for approximate engine results and rounded decimal presentations, even when an exact fraction remains in `result.value.exact`. Clients should show an approximation indicator with that display.
 
-When reusing an approximate real value as calculator input, `approx(value)` preserves its status as an estimate at the new request's compute precision. A bare copied decimal literal is otherwise an exact rational input. Retain approximation metadata in integrations instead of treating the decimal digits alone as a proof of exactness.
+Use the new `input` field when reusing a result. It preserves approximation provenance with `approx(value)` for unknown uncertainty or `approx(value,error)` for a bounded estimate. The existing `exact` field retains the stored point value and does not, by itself, encode uncertainty. A bare copied decimal literal is an exact rational input.
+
+Every numeric object includes `uncertainty`:
+
+- `{"kind":"exact"}`: an exact number, even if its decimal presentation is rounded.
+- `{"kind":"unknown"}`: an estimate without a certified error bound; its displayed digits do not prove accuracy.
+- `{"kind":"bounded","absoluteError":"0.001"}`: the mathematical value is enclosed by stored value ± the given nonnegative absolute error. A zero error remains approximate in provenance but denotes a known point.
+
+Complex results expose numeric `real` and `imaginary` objects; quantities expose a numeric `coefficient`. Their top-level `input` preserves each component's metadata. Numeric graph-root coordinates, sampled limit estimates, and quadrature estimates use unknown uncertainty: a point's arithmetic bound is not a rigorous bound on a root, limit, or integral. Quadrature's separate `estimatedError` remains a heuristic error estimate, never a certified enclosure.
+
+Point-only tool parameters (finance, BMI, vector inputs, probability, curve fitting, quartiles, Taylor/limit centers, and table bounds) reject estimates with unknown or nonzero uncertainty as `UNSUPPORTED` instead of silently discarding it. Explicit zero-error estimates are permitted subject to the core's arithmetic checks. Integer/discrete inputs require exact rational whole numbers. Calculator expressions and register values can carry estimate metadata across ordinary supported arithmetic.
+
+The constants catalog retains its original reference fields. Mathematical entries additionally carry `input`, `approximate`, and numeric `uncertainty`; legacy catalog `exact` remains a formatted reference string, so use `input` for reuse. Physical entries retain the separate standard-uncertainty string and exact-definition flag, and add `uncertaintyMeaning`, reusable quantity `input`, and `evaluationUncertainty`. A measured constant's standard statistical uncertainty is not a hard enclosure: G, electron mass, and proton mass therefore evaluate as estimates with unknown rigorous bounds.
 
 Settings accepted by numeric operations:
 
@@ -68,6 +82,7 @@ Unknown fields, duplicate JSON keys, invalid UTF-8, unpaired Unicode surrogates,
 | `GET /` or `/v1/capabilities` | Operation names, stateless behavior, and limits. |
 | `GET /v1/functions` | Function names, aliases, arities, display names, and descriptions. |
 | `GET /v1/constants` | Mathematical and physical constants, units, uncertainty, and exactness. |
+| `GET /v1/tool-catalog` | New tool families, operation names, required fields, and optional fields. |
 | `GET /v1/units` | Unit aliases, canonical names, dimensions, factors, and temperature offsets. |
 | `POST /v1/evaluate` | `expr`, optional `settings`, optional `registers`. Routes arithmetic, units, stored values, equations, identities, no-solution cases, and small linear systems. |
 | `POST /v1/convert` | `value`, `from`, `to`, optional `settings`. Converts compatible units, including affine temperature. |
@@ -86,13 +101,13 @@ Unknown fields, duplicate JSON keys, invalid UTF-8, unpaired Unicode surrogates,
 
 Evaluation result `kind` is `scalar`, `stored`, `verdict`, `roots`, `system`, `identity`, or `noSolution`. Each variant includes its relevant structured fields plus a display string. Equation roots are ordered as in the app.
 
-Matrix operations are `add`, `subtract`, `multiply`, `determinant`, `inverse`, `transpose`, `rank`, and `scale`. Binary operations require `b`; `scale` requires `scalar`. Matrices are rectangular arrays of rows. `rank` returns a JSON integer; determinant returns a numeric result; other operations return `{rows, columns, cells}`.
+Matrix operations are `add`, `subtract`, `multiply`, `determinant`, `inverse`, `transpose`, `rank`, `scale`, `eigenvalues`, and `characteristicPolynomial`. Binary operations require `b`; `scale` requires `scalar`. Matrices are rectangular arrays of rows. `rank` returns a JSON integer; determinant returns a numeric result; ordinary matrix-valued operations return `{rows, columns, cells}`. `characteristicPolynomial` returns numeric `coefficients` in ascending powers of λ for `det(λI-A)`. `eigenvalues` returns distinct numeric/complex `values`, that same `polynomial`, and `eigenvectors: false`; repeated eigenvalues are listed once. The API matrix cap remains 6 × 6. Higher-degree polynomial equations use `/v1/evaluate` directly, with the core's degree-eight and coefficient/work limits; numerical roots remain approximate and unsupported cases return typed refusals.
 
 For a one-value statistics dataset, sample variance and sample standard deviation are `null`, because they are undefined. They are never replaced by zero.
 
 For linear regression with constant Y values and varying X, the fitted horizontal line is valid, but correlation and r² are undefined. The response keeps the slope/intercept and returns `null` for `r` and `rSquared`. A dataset with no X variation cannot determine a unique fitted slope and returns a typed error.
 
-Graph samples default to 201 points over `[-6.6, 6.6]`; root search defaults to 200 samples. A verified numeric root means the original function’s residual passed the engine’s tolerance. Numeric interval scanning is **not a proof that every root was found**. An asymptote or domain error is never emitted as a successful root. An unverified response retains both verified roots and unresolved candidates.
+Graph samples default to 201 points over `[-6.6, 6.6]`; root search defaults to 200 samples. A verified numeric root means an established upper bound for the original function’s absolute residual passed the engine’s tolerance. Sample signs and closed denominators must be established from error bounds; unknown uncertainty or a wide interval crossing zero cannot supply a sign. Relative residual targets use lower bounds for the original endpoint magnitudes. Within a sufficiently narrow continuity bracket, either qualifying endpoint residual bounds or a qualifying midpoint residual bound can complete bisection. Numeric interval scanning is **not a proof that every root was found**. An asymptote or domain error is never emitted as a successful root. An unverified response retains both verified roots and unresolved candidates.
 
 Root responses carry `approximate` both for the search result and each root/coordinate. Numeric bisection is marked approximate even when the sampled coordinate is stored as an exact rational. An unverified candidate is always marked approximate; retained verified roots are also marked approximate when their residual is nonzero or their coordinate is an approximate decimal. A zero residual from a numeric sampling method does not turn that method into an exact symbolic proof.
 
@@ -105,6 +120,69 @@ Surface sampling defaults to a 21 × 21 grid over x/y in `[-5,5]`. The server al
 Symbolic calculus always uses **radians**, independently of numeric settings. Its output includes `expression`, `display`, `steps`, `conditions`, `angleMode`, `constantOfIntegration`, and `domainRestricted`. Conditions belong to the answer and must be shown to users; when `domainRestricted` is true, do not reuse the simplified expression without carrying those restrictions. Antiderivatives have `constantOfIntegration: true`; the parseable `expression` omits `+ C`, while `display` includes it. Unsupported algebra returns a typed error rather than an invented solution. See [SYMBOLIC.md](SYMBOLIC.md) for the supported mathematical scope.
 
 Definite numerical integration also uses radians. It returns `value`, `estimatedError`, `evaluations`, `method`, `approximate: true`, and `warnings`. The error estimate is **not a rigorous bound**. The engine uses adaptive Gauss–Kronrod quadrature with conservative domain checks, and rejects improper integrals, unproven singularities, and failure to converge. Bounds may be reversed. Both tolerances default to `1e-10` and must be in `1e-20..0.01`. Numerical working `precision` defaults to 48 and must be in `32..50`; formatting uses `settings`. The server caps evaluations at 4,096, subdivision depth at 20, and elapsed calculation time at four seconds. Very narrow features may escape finite sampling; display the warnings with the result.
+
+### Additional shared-core tools
+
+All paths below are POST endpoints under `/v1/`. They accept optional `settings`, return `{ok:true, operation, result}`, and reject unknown fields. Names are case-sensitive. An `operation` is required for multi-operation families; omit it entirely for `bmi`, `quartiles`, `taylor`, `limit`, and `table`. The authoritative field inventory is `GET /v1/tool-catalog`. These wrappers call shared core modules; Android-only geometry, business, and sequence forms are not duplicated in the server.
+
+| Path | Operations and fields |
+| --- | --- |
+| `finance` | Operations and exact parameter names below. Rates are percentage units: `18` means 18%, while `0.18` means 0.18%. No suffix removal or implicit monetary rounding. |
+| `dates` | `between`: `from,to`; `shift`: `date,days`; `age`: `birth,asOf`; `weekday`: `date`. Dates are ISO `YYYY-MM-DD` or `DD/MM/YYYY`, years 0001–9999. No implicit clock or time zone. |
+| `duration` | `add`/`subtract`: duration strings `a,b` as `H:MM[:SS]`; `between`: clock strings `from,to`; `format`: exact whole `seconds`. Clock end before start means next day; equal clocks mean zero elapsed time. |
+| `bmi` | `weightKg,heightCm`. Returns numeric `index`, adult `band`, label and scope. Weight must be >0 and ≤1000 kg, height 30–300 cm. The bands are general screening categories, not a diagnosis or age/population-adjusted assessment. |
+| `words` | `indian`/`international`: exact whole `value`; `rupees`: nonnegative whole `rupees`, JSON integer `paise` 0–99. English wording only; magnitudes below 10²¹. |
+| `vector` | `dot`, `cross`, `projection`, `angle`: arrays `a,b`; `length`: `a`. Equal dimensions, 1–16 components; cross product requires 3. Projection is a onto b. Angles use `settings.angle` and return `angleMode`; zero-vector direction is refused. |
+| `number-theory` | `factorize`, `isPrime`, `divisors`: exact whole `value`; `gcd`, `lcm`: 2–100 exact whole `values`. Factoring/primality are deterministic within magnitude 10¹⁴; divisor listing caps at 2000. |
+| `probability` | `binomial`: JSON integers `n,k`, numeric `p`; `poisson`: JSON integer `k`, numeric `lambda`; `normal`: numeric `mean,sigma,x`. Returns `atMost` and `above`, plus `exactly` for discrete distributions. |
+| `curve-fit` | `quadratic`, `exponential`, `power`, `logarithmic`: `points` as `[[x,y],...]`. Returns model coefficients and nullable `rSquared` with `fitSpace`. Quadratic requires ≥3 points, others ≥2; max 1000. |
+| `quartiles` | `data`: 2–1000 values. Returns Q1/median/Q3, interquartile range, modes, frequency and method. Uses medians of halves, excluding the middle observation for odd counts; distinct data has no mode. |
+| `taylor` | `expr,center,order`, optional `variable`. Order 0–10. Returns ascending coefficients in powers of `(variable-center)`, expression, and exact-coefficient metadata. A finite polynomial is a local approximation; no remainder bound is supplied. |
+| `limit` | `expr,point`, optional `variable`. Point is numeric or the string `inf`, `+inf`, `-inf`. Returns left/right states, nullable `twoSided`, and explicit estimate warning. Finite sampling is not proof of a limit. |
+| `table` | `expr,start,end,step`, optional `variable,registers`. Start ≤ end, step >0; at most 200 rows, bound magnitudes ≤10¹². Preserves separate defined/undefined/unevaluated states for every row. |
+| `series` | `sum`/`product`: `expr,from,to`, optional `variable,registers`. Inclusive exact whole bounds, from ≤ to, magnitude ≤10⁹. At most 1000 sum terms or 200 product terms; any failed term rejects the whole calculation. |
+| `bitwise` | `and`/`or`/`xor`: strings `a,b`; `shift`: `a`, JSON integer `places`; `not`: `a`, JSON integer `bits`. Optional integer `base` 2–36 defaults to 10. Returns decimal/binary/octal/hexadecimal strings. |
+
+Taylor and limit calculations, including their numeric center/point expressions, always use **RAD**. Limit estimates compare agreement at the scale of the observed values, without a unit-sized tolerance or near-zero snapping. Two sides must round to the same value at their shared reported significant digits. A zero estimate is supported explicitly for a continuous-expression subset evaluating to zero at a finite point, or a proper rational function with exact coefficients at infinity; other unresolved approaches remain unsettled. All sampled limit outputs, including zero, retain unknown numerical uncertainty and approximate provenance. Table and finite-series evaluation use the requested angle mode and a per-request register snapshot. Table/series loops have a three-second cooperative budget: checks surround each bounded evaluation; a kernel call is not forcibly interrupted mid-operation. Tables retain calculation failures as unevaluated rows; sums/products never report partial totals as complete.
+
+Probability bounds: binomial 1–2000 trials with 0 ≤ k ≤ n and 0 ≤ p ≤ 1; Poisson 0–5000 events and 0 < λ ≤ 10000; normal σ >0 and standardized score between −40 and 40. Normal tails are evaluated directly at opposite standardized scores to avoid subtracting a tiny tail from 1. Exponential fit uses `y=a*exp(b*x)` and ln(y) fit quality; power fit uses `y=a*x^b` and ln(x),ln(y) fit quality; logarithmic fit uses `y=a+b*ln(x)` and ln(x),y fit quality. A constant response can leave r² undefined (`null`).
+
+Date spans report nonnegative `totalDays`, whole `weeks`, remainder, calendar years/months/days, and a separate `forward` direction. Age requires birth ≤ asOf; a February 29 birthday is treated as March 1 in non-leap years. Shifts are bounded to ±3,660,000 days and must remain in supported years. Duration input allows at most 1,000,000,000 hours per operand; formatted seconds have magnitude ≤7,200,000,007,198. Signed differences use a leading minus sign; raw duration inputs themselves are nonnegative.
+
+Bitwise operations require nonnegative inputs. NOT is unsigned within an explicit 8-, 16-, 32-, or 64-bit word and refuses inputs that do not fit. Positive shift places shift left, negative places shift right. Inputs are capped at 512 characters; shifts and results are capped at 4096 bits.
+
+#### Finance operation fields
+
+| Operation | Required fields | Result fields |
+| --- | --- | --- |
+| `loan` | `principal,annualRate,months` | `payment,totalPaid,totalInterest` |
+| `compound` | `principal,annualRate,years,compoundsPerYear` | `amount,interest` |
+| `simple` | `principal,annualRate,years` | `amount,interest` |
+| `sip` | `monthly,annualRate,months` | `futureValue,invested,gain,paymentTiming` |
+| `schedule` | `principal,annualRate,months` | Yearly rows with `year,interest,principal,balance` |
+| `affordableLoan` | `payment,annualRate,months` | `principal,totalPaid,totalInterest` |
+| `savingsGoal` | `target,annualRate,months` | `monthly,invested,gain,paymentTiming` |
+| `inflation` | `amount,annualRate,years` | `futurePrice,buyingPower` |
+| `addTax` / `removeTax` | `amount,rate` | `net,tax,gross` |
+| `discount` | `price,percent` | `saving,finalPrice` |
+| `percentChange` | `from,to` | `difference,percent` |
+| `portion` | `percent,amount` | Numeric result |
+| `percentOf` | `part,whole` | Numeric result |
+| `split` | `bill,tipPercent,people` | `tip,total,perPerson` |
+| `shares` | `amount,ratio` array | `parts,simplestRatio` |
+| `unitPrices` | `priceA,quantityA,priceB,quantityB` | `unitPriceA,unitPriceB,savingPercent` |
+| `fuel` | `distance,distancePerUnitFuel,pricePerUnitFuel` | `fuel,cost` |
+| `proportion` | `a,b,c` | Numeric missing value d from a:b = c:d |
+
+`months`, `compoundsPerYear`, and `people` are JSON integers. Months are 1–12000 (schedule: 1–600); compounding frequency 1–365 with at most 12000 periods; split people 1–10000; ratio length 2–12. SIP and goal contributions occur at the start of each month. Finance computes mathematical scenarios, with no fees, taxes beyond explicitly requested tax operations, external rates, currency conversion, or lender-specific repayment rounding. Display precision never rounds the stored monetary result to two decimals.
+
+Examples of new requests:
+
+```json
+{"operation":"loan","principal":"1200","annualRate":"0","months":12}
+```
+
+POST the above to `/v1/finance` for an exact monthly payment of 100; `/v1/series` accepts `{"operation":"sum","expr":"x^2","from":1,"to":10}` for 385. `/v1/evaluate` accepts `{"expr":"approx(10,0.1)+2"}` and returns reusable estimate input plus the propagated uncertainty metadata.
 
 ### Examples
 
@@ -154,5 +232,5 @@ The legacy `GET /eval?expr=...` remains compatible with the original scalar API 
 ./gradlew :api:test
 ```
 
-The API tests exercise actual Ktor HTTP requests, exact large integers, localized display with lossless machine values, fractions, angle settings, register isolation, equations, unit conversion, matrices, statistics, regression, base conversion, graph holes and verified roots, 3D surface grids, symbolic metadata, numerical integration and its error estimates, malformed JSON, input limits, content types, and response security headers. Separate codec tests cover strict JSON and loopback configuration. Test results are generated under `api/build/reports/tests/test`.
+The API tests exercise actual Ktor HTTP requests, exact large integers, localized display with lossless machine values, fractions, angle settings, register isolation, equations, unit conversion, matrices, statistics, regression, base conversion, graph holes and verified roots, 3D surface grids, symbolic metadata, numerical integration and its error estimates, malformed JSON, input limits, content types, and response security headers. The added tool tests cover independent exact totals, tiny-rate finance stability, leap-day conventions, duration overflow boundaries, vector/eigen results, deterministic factors, probability tails, fit quality, quartile conventions, radians calculus, table holes, series completeness, bitwise boundaries, uncertainty metadata and malformed tool schemas. Separate codec tests cover strict JSON and loopback configuration. Test results are generated under `api/build/reports/tests/test`.
 

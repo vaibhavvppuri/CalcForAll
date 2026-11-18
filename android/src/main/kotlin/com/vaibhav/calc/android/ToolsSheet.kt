@@ -13,37 +13,45 @@ import com.vaibhav.calc.core.constants.Constants
 import com.vaibhav.calc.core.eval.*
 import com.vaibhav.calc.core.format.Formatter
 import com.vaibhav.calc.core.units.Units
+import java.time.LocalDate
 import kotlinx.coroutines.*
 
 @Composable
 fun ToolsSheet(settings: Settings, onInsert: (String, AngleMode?, String?) -> Unit, onHandwriting: () -> Unit, onPhoto: () -> Unit, onSurface: () -> Unit) {
     var tool by remember { mutableStateOf<String?>(null) }
+    val catalog = remember { MoreTools.catalog(LocalDate.now()) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(tool ?: "Tools", style = MaterialTheme.typography.headlineSmall)
             if (tool != null) TextButton(onClick = { tool = null }) { Text("All tools") }
         }
         if (tool == null) {
-            val tools = listOf("Units" to "Length, area, temperature, Indian units and more",
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPhoto, modifier = Modifier.weight(1f)) { Text("Photo calculator") }
+                OutlinedButton(onClick = onHandwriting, modifier = Modifier.weight(1f)) { Text("Write & calculate") }
+            }
+            // 1.2: everyday tools lead; the study tools follow the existing ones.
+            val added = catalog.map { it.name to it.summary }
+            val tools = added.take(EVERYDAY_TOOLS) + listOf("Units" to "Length, area, temperature, Indian units and more",
                 "Matrices" to "Exact arithmetic, determinants, inverses and rank",
                 "Statistics" to "Summary statistics and linear regression",
                 "Number bases" to "Convert integers between bases 2–36",
                 "Algebra & calculus" to "Simplify, factor, differentiate and integrate",
-                "Constants" to "Physical constants with units and uncertainty")
+                "Constants" to "Physical constants with units and uncertainty") + added.drop(EVERYDAY_TOOLS)
             tools.forEach { (name, description) ->
                 OutlinedCard(onClick = { tool = name }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                     Column(Modifier.padding(16.dp)) { Text(name, style = MaterialTheme.typography.titleMedium); Text(description, fontSize = 12.sp) }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onHandwriting, modifier = Modifier.weight(1f)) { Text("Handwriting") }
-                OutlinedButton(onClick = onPhoto, modifier = Modifier.weight(1f)) { Text("Photo text") }
-            }
             OutlinedButton(onClick = onSurface, modifier = Modifier.fillMaxWidth()) { Text("3D surface · z = f(x, y)") }
             Text("Also type equations or unit expressions directly in the calculator, then press =. Use the Units tool to convert between units.",
                 fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
         } else if (tool == "Constants") ConstantBrowser(settings) { onInsert(it, null, null) }
-        else key(tool) { ToolForm(tool!!, settings, onInsert) }
+        else {
+            val spec = catalog.firstOrNull { it.name == tool }
+            if (spec != null) key(tool) { SpecToolForm(spec, settings, onInsert) }
+            else key(tool) { ToolForm(tool!!, settings, onInsert) }
+        }
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -51,7 +59,7 @@ fun ToolsSheet(settings: Settings, onInsert: (String, AngleMode?, String?) -> Un
 @Composable
 private fun ToolForm(tool: String, settings: Settings, onInsert: (String, AngleMode?, String?) -> Unit) {
     val operations = when (tool) {
-        "Matrices" -> listOf("Determinant", "Inverse", "Transpose", "Rank", "Add", "Subtract", "Multiply", "Scale")
+        "Matrices" -> listOf("Determinant", "Inverse", "Transpose", "Rank", "Add", "Subtract", "Multiply", "Scale", "Solve system", "Eigenvalues")
         "Statistics" -> listOf("Summary", "Linear regression")
         "Algebra & calculus" -> listOf("Simplify", "Expand", "Factor", "Differentiate", "Integrate", "Definite integral")
         else -> listOf("Convert")
@@ -68,7 +76,8 @@ private fun ToolForm(tool: String, settings: Settings, onInsert: (String, AngleM
     val scope = rememberCoroutineScope()
     if (operations.size > 1) ChoiceRow("Operation", operations, operation) { operation = it; answer = null }
     val help = when (tool) {
-        "Matrices" -> "Separate cells with commas and rows with semicolons or new lines. Up to 6 × 6; fractions such as 1/3 are exact."
+        "Matrices" -> "Separate cells with commas and rows with semicolons or new lines. Up to 6 × 6; fractions such as 1/3 are exact. " +
+            "Solve system finds X with A·X = B: enter the constants as a column, one row per equation. Eigenvalues lists each distinct value once."
         "Statistics" -> "Separate values with commas, spaces or new lines. Up to 1,000 values. Use ungrouped numbers."
         "Number bases" -> "Whole numbers only. Bases 2–36; letters A–Z represent digits 10–35."
         "Algebra & calculus" -> "Bounded real algebra. Unsupported forms return an explanation. Calculus uses radians; conditions remain attached to the answer."
@@ -77,9 +86,9 @@ private fun ToolForm(tool: String, settings: Settings, onInsert: (String, AngleM
     Text(help, fontSize = 12.sp, modifier = Modifier.padding(vertical = 12.dp))
     if(tool == "Matrices") MatrixInput("Matrix A", a) { a = it; answer = null }
     else ToolField(when(tool) { "Statistics" -> if(operation == "Summary") "Data" else "X values"; "Algebra & calculus" -> "Expression"; else -> "Value" }, a) { a = it; answer = null }
-    val showB = tool != "Matrices" && !(tool == "Statistics" && operation == "Summary") || operation in listOf("Add", "Subtract", "Multiply")
+    val showB = tool != "Matrices" && !(tool == "Statistics" && operation == "Summary") || operation in listOf("Add", "Subtract", "Multiply", "Solve system")
     if (showB) {
-        if(tool == "Matrices") MatrixInput("Matrix B", b) { b = it; answer = null }
+        if(tool == "Matrices") MatrixInput(if (operation == "Solve system") "Right-hand side B" else "Matrix B", b) { b = it; answer = null }
         else ToolField(when(tool) { "Statistics" -> "Y values"; "Units" -> "From unit"; "Number bases" -> "From base"; else -> "Variable" }, b) { b = it; answer = null }
     }
     if(tool == "Matrices" && operation == "Scale") ToolField("Multiply every cell by", scalar) { scalar = it; answer = null }
@@ -119,6 +128,60 @@ private fun ToolForm(tool: String, settings: Settings, onInsert: (String, AngleM
     }
 }
 
+/** Money, Dates, Everyday and Time are listed before the original tools; the rest of the catalogue after them. */
+private const val EVERYDAY_TOOLS = 4
+
+/** One form for every catalogued 1.2 tool: operation chips, the operation's own labelled fields, one answer card. */
+@Composable
+private fun SpecToolForm(spec: ToolSpec, settings: Settings, onInsert: (String, AngleMode?, String?) -> Unit) {
+    var operation by remember { mutableStateOf(spec.operations.first()) }
+    var answer by remember { mutableStateOf<ToolAnswer?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    // Bumped by every edit and every operation change. A calculation's answer is shown only
+    // if nothing has changed since it started — comparing field text is not enough, because
+    // switching away and back recreates the fields while the old run still holds the old ones.
+    var generation by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    if (spec.operations.size > 1) {
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            spec.operations.forEach { option ->
+                FilterChip(option.name == operation.name, onClick = { operation = option; answer = null; generation++ }, label = { Text(option.name) })
+            }
+        }
+    }
+    key(operation.name) {
+        val values = remember { mutableStateListOf(*operation.fields.map { it.default }.toTypedArray()) }
+        if (operation.help.isNotEmpty()) Text(operation.help, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+        operation.fields.forEachIndexed { index, field ->
+            ToolField(field.label, values[index]) { values[index] = it; answer = null; generation++ }
+        }
+        Button(enabled = !busy, onClick = {
+            val snapshot = values.toList()
+            val chosen = operation.name
+            val started = generation
+            busy = true
+            scope.launch {
+                try {
+                    val computed = withContext(Dispatchers.Default) { MoreTools.calculate(spec.name, chosen, snapshot, settings, LocalDate.now()) }
+                    if (generation == started) answer = computed
+                } catch(e: CancellationException) { throw e }
+                  catch(e: Exception) {
+                    if (generation == started) answer = ToolAnswer(e.message ?: "This calculation could not be completed.", error = true)
+                }
+                finally { busy = false }
+            }
+        }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) { Text(if (busy) "Calculating…" else operation.name) }
+    }
+    if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    answer?.let { result ->
+        Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+            SelectionContainer { Text(result.text, modifier = Modifier.padding(16.dp), fontFamily = CalcFonts.JetBrainsMono,
+                color = if(result.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) }
+            result.insert?.let { insertion -> TextButton(onClick = { onInsert(insertion, result.insertAngle, result.insertNotice) }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Use in calculator") } }
+        }
+    }
+}
+
 @Composable
 private fun MatrixInput(label: String, value: String, onChange: (String) -> Unit) {
     var grid by remember { mutableStateOf(true) }
@@ -148,7 +211,7 @@ private fun MatrixInput(label: String, value: String, onChange: (String) -> Unit
                             if(next.length <= 128 && next.none { it == ',' || it == ';' || it == '\n' }) {
                                 write(cells.mapIndexed { ri, values -> values.mapIndexed { ci, old -> if(ri == r && ci == c) next else old } })
                             }
-                        }, singleLine = true, label = { Text("${r + 1},${c + 1}", fontSize = 10.sp) }, modifier = Modifier.width(84.dp))
+                        }, singleLine = true, keyboardOptions = MathKeyboard, label = { Text("${r + 1},${c + 1}", fontSize = 10.sp) }, modifier = Modifier.width(84.dp))
                     }
                 }
             }
@@ -161,14 +224,14 @@ private fun MatrixInput(label: String, value: String, onChange: (String) -> Unit
 
 @Composable
 private fun ToolField(label: String, value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(value, { if(it.length <= 8192) onChange(it) }, label = { Text(label) }, maxLines = 6,
+    OutlinedTextField(value, { if(it.length <= 8192) onChange(it) }, keyboardOptions = MathKeyboard, label = { Text(label) }, maxLines = 6,
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
 }
 
 @Composable
 private fun ConstantBrowser(settings: Settings, onInsert: (String) -> Unit) {
     var search by remember { mutableStateOf("") }
-    OutlinedTextField(search, { search = it.take(80) }, label = { Text("Search constants") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(search, { search = it.take(80) }, keyboardOptions = MathKeyboard, label = { Text("Search constants") }, modifier = Modifier.fillMaxWidth())
     Constants.allPhysical().filter { it.name.contains(search, true) || it.symbol.contains(search, true) }.forEach { c ->
         Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
             Text(c.name, style = MaterialTheme.typography.titleMedium)

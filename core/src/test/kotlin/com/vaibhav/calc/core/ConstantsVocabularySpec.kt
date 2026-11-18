@@ -105,7 +105,10 @@ class ConstantsVocabularySpec : StringSpec({
      * `φ = (1+√5)/2` is a *binomial* surd, and the tower has no type for one:
      * `Rational | Surd | SymConst | Dec` holds `√5` but not `1+√5`. So φ decays to a
      * [com.vaibhav.calc.core.num.Dec], and `φ² = φ + 1` — the defining property of the
-     * golden ratio — comes back **false**.
+     * golden ratio — cannot be confirmed. Until 1.3 it came back **false**; since the tenth
+     * review pass an estimate that agrees with the other side to every digit it can be trusted
+     * to is neither confirmed nor denied, so the statement is now refused as undecidable.
+     * That is the honest answer for a decimal, and still not the True the mathematics deserves.
      *
      * This is `sin(45)`'s class with a different cause. There, the engine threw away
      * an exactness it had; here the tower cannot express the value at all, so no fast
@@ -116,9 +119,10 @@ class ConstantsVocabularySpec : StringSpec({
      * Recorded as a test rather than a comment so the day the tower gains that type,
      * this goes red and tells someone.
      */
-    "KNOWN GAP: φ² = φ + 1 is denied, because the tower cannot hold a binomial surd" {
+    "KNOWN GAP: φ² = φ + 1 cannot be decided, because the tower cannot hold a binomial surd" {
         val r = route("phi^2 = phi + 1")
-        ((r as RouteResult.Ok).outcome as Outcome.Verdict).holds shouldBe false
+        // Not False any more (1.3), and not yet True: the day the tower can hold 1+√5 this goes red.
+        ((r as RouteResult.Err).error.detail.contains("cannot be said whether they are equal")) shouldBe true
         // φ is honest about what it is — a decimal, not a fake exact form.
         (value("phi") is RealValue) shouldBe true
         (value("phi") as RealValue).num::class.simpleName shouldBe "Dec"

@@ -167,7 +167,7 @@ fun GraphScreen(settings: Settings, initial: String, environment: Environment, o
                 Text("Graph", style = MaterialTheme.typography.headlineSmall)
                 TextButton(onClick = onClose) { Text("Calculator") }
             }
-            OutlinedTextField(input, { if(it.length <= 6144) input = it }, label = { Text("Functions of x · one per line · ${settings.angle}") },
+            OutlinedTextField(input, { if(it.length <= 6144) input = it }, keyboardOptions = MathKeyboard, label = { Text("Functions of x · one per line · ${settings.angle}") },
                 maxLines = 3, modifier = Modifier.fillMaxWidth(), trailingIcon = { TextButton(onClick = { plotted = input; analysis = null }) { Text("Plot") } })
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = { move(viewport.zoom(Num.of(1, 2))) }) { Text("Zoom +") }
@@ -225,7 +225,7 @@ fun GraphScreen(settings: Settings, initial: String, environment: Environment, o
                 TextButton(onClick = { analyze("Intersections") }, enabled = !busy && !analyzing) { Text("Intersect (1, 2)") }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(traceX, { traceX = it.take(80) }, label = { Text("Trace x") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(traceX, { traceX = it.take(80) }, keyboardOptions = MathKeyboard, label = { Text("Trace x") }, singleLine = true, modifier = Modifier.weight(1f))
                 TextButton(onClick = { analyze("Trace") }, enabled = !busy && !analyzing, modifier = Modifier.height(56.dp)) { Text("Trace") }
             }
             analysis?.let { Text(it, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().heightIn(max = 120.dp).verticalScroll(rememberScrollState()).padding(top = 8.dp)) }
@@ -243,7 +243,7 @@ private fun RangeDialog(view: Viewport, dismiss: () -> Unit, apply: (Viewport) -
         Column {
             listOf("x minimum", "x maximum", "y minimum", "y maximum").forEachIndexed { i, label ->
                 OutlinedTextField(fields[i], { value -> fields = fields.toMutableList().also { it[i] = value.take(30) } },
-                    label = { Text(label) }, singleLine = true)
+                    keyboardOptions = MathKeyboard, label = { Text(label) }, singleLine = true)
             }
             Text("Bounds within ±2,000,000; span 0.000001 to 2,000,000.", fontSize = 11.sp)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

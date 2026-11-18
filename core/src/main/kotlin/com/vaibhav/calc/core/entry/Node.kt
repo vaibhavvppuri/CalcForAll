@@ -91,9 +91,16 @@ data class Row(val nodes: List<Node> = emptyList()) {
  * Linearise to the engine's own text grammar.
  *
  * **The parentheses are load-bearing, not cosmetic.** A `Fraction([1,+,2], [3])`
- * *displays* as (1+2)/3, so it must linearise as `(1+2)/(3)`. Emitting `1+2/3`
+ * *displays* as (1+2)/3, so it must linearise as `((1+2)/(3))`. Emitting `1+2/3`
  * would make the parser read something the user never wrote — the editor and the
  * grammar disagreeing, which is exactly the drift Article 12 forbids.
+ *
+ * **The outer pair is load-bearing too** (1.3). A fraction or a power is ONE value on
+ * screen, whatever is typed after it. Without the outer brackets the parser took what
+ * followed into the last field: ½ followed by `lakh` read as 1/(2 lakh) — a tenth of a
+ * millionth of what was drawn, with no error — ½ followed by `%` as 1/(2%), and 2³ followed
+ * by `!` as 2^(3!). A unit, a number word and the postfix operators all bind tighter than
+ * `/`, and the postfix ones tighter than `^`.
  *
  * An empty field linearises to `()`, which does not parse — and that is correct:
  * a half-typed entry is genuinely not yet valid, and the *parser* says so rather
@@ -105,8 +112,8 @@ fun Node.toInput(): String = when (this) {
     is Atom -> char.toString()
     is Ref -> "#$n" // the engine's reference grammar (lex/Tokenizer.entryReference)
     Ans -> "ans"
-    is Fraction -> "(${numerator.toInput()})/(${denominator.toInput()})"
-    is Power -> "(${base.toInput()})^(${exponent.toInput()})"
+    is Fraction -> "((${numerator.toInput()})/(${denominator.toInput()}))"
+    is Power -> "((${base.toInput()})^(${exponent.toInput()}))"
     is Root ->
         if (index == null) "sqrt(${radicand.toInput()})"
         else "root((${radicand.toInput()}),(${index.toInput()}))"

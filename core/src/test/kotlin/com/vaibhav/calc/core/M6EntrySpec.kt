@@ -27,7 +27,7 @@ class M6EntrySpec : StringSpec({
     // --- typing builds what the grammar means --------------------------------
     "typing 1 + 2 / 3 captures only the trailing operand" {
         val s = Editor.typeFraction(empty().type("1+2")).type("3")
-        s.toInput() shouldBe "1+(2)/(3)" // NOT (1+2)/(3)
+        s.toInput() shouldBe "1+((2)/(3))" // NOT (1+2)/(3)
         val v = (s.validate() as CalcResult.Ok).value
         Calculator().num(s.toInput()).compareTo(Num.of(5, 3)) shouldBe 0
         v shouldNotBe null
@@ -62,7 +62,7 @@ class M6EntrySpec : StringSpec({
         val s = twoOverThree().left().left().left() // start of the populated numerator
         val first = s.bs()
         first.selection shouldNotBe null // the press is VISIBLE
-        first.toInput() shouldBe "(2)/(3)" // and destroyed nothing
+        first.toInput() shouldBe "((2)/(3))" // and destroyed nothing
         val second = first.bs()
         second.toInput() shouldBe "" // the second press deletes what was shown
     }
@@ -70,7 +70,7 @@ class M6EntrySpec : StringSpec({
         val s = twoOverThree().right() // exit the fraction; cursor after it in the root
         val first = s.bs()
         first.selection shouldNotBe null
-        first.toInput() shouldBe "(2)/(3)"
+        first.toInput() shouldBe "((2)/(3))"
         first.bs().toInput() shouldBe ""
     }
     "navigation deselects" {
@@ -104,10 +104,10 @@ class M6EntrySpec : StringSpec({
         // simpler: build 5/6 then wrap: type 5, `/`, 6 → 5/6 ; then in the denominator make 6/7
         var t = Editor.typeFraction(empty().type("5")).type("6")
         t = Editor.typeFraction(t).type("7") // denominator is now 6/7
-        t.toInput() shouldBe "(5)/((6)/(7))"
+        t.toInput() shouldBe "((5)/(((6)/(7))))"
         // empty the inner denominator, then collapse ONLY the inner fraction
         val inner = t.bs().bs() // delete 7, then collapse inner (empty denominator → 6 survives)
-        inner.toInput() shouldBe "(5)/(6)" // outer fraction untouched — no cascade
+        inner.toInput() shouldBe "((5)/(6))" // outer fraction untouched — no cascade
     }
 
     // --- Article 12: the editor cannot build what the parser rejects -----------

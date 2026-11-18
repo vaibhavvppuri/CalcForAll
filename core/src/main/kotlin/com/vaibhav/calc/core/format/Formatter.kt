@@ -25,6 +25,7 @@ import com.vaibhav.calc.core.eval.Value
 import com.vaibhav.calc.core.parse.Parser
 import com.vaibhav.calc.core.num.Complex
 import com.vaibhav.calc.core.num.Dec
+import com.vaibhav.calc.core.num.Konst
 import com.vaibhav.calc.core.num.Num
 import com.vaibhav.calc.core.num.Rational
 import com.vaibhav.calc.core.num.Surd
@@ -43,15 +44,35 @@ object Formatter {
 
     /** Parser text for copying/inserting a stored value, independent of display policy.
      * A Dec retains all stored digits; this does not turn an approximation into an exact result.
+     *
+     * A multiple of e is written with its product sign. To the tokenizer a lowercase e straight
+     * after a digit is an exponent marker (D-016.6), so the display form "2e" is refused as an
+     * incomplete exponent when read back, and "2e" followed by a typed "+3" would read as 2000.
      */
     fun input(x: Num): String = if(x is Dec) x.value.toString() else exact(x, Settings(
         exactForm = ExactForm.FRACTION, grouping = GroupingMode.NONE,
-        numerals = com.vaibhav.calc.core.eval.NumeralSystem.WESTERN))
+        numerals = com.vaibhav.calc.core.eval.NumeralSystem.WESTERN)).let {
+        if (x is SymConst && x.konst == Konst.E) EULER_AFTER_DIGIT.replace(it, "\$1*e") else it
+    }
+
+    private val EULER_AFTER_DIGIT = Regex("(\\d)e")
 
     fun input(v: Value): String = when(v) {
         is RealValue -> input(v.num)
         is ComplexValue -> "(${input(v.cx.re)})+(${input(v.cx.im)})i"
         is QuantityValue -> "(${input(v.q.value)}) ${v.q.unit.name}"
+    }
+
+    /** Calculator input that preserves an estimate's uncertainty instead of promoting its digits to exact data. */
+    fun reusableInput(x: Num): String = if (x is Dec) {
+        val error = x.absoluteError
+        if (error == null) "approx(${input(x)})" else "approx(${input(x)},${error.toString()})"
+    } else input(x)
+
+    fun reusableInput(v: Value): String = when (v) {
+        is RealValue -> reusableInput(v.num)
+        is ComplexValue -> "(${reusableInput(v.cx.re)})+(${reusableInput(v.cx.im)})i"
+        is QuantityValue -> "(${reusableInput(v.q.value)}) ${v.q.unit.name}"
     }
 
     /** The most faithful representation: exact form when there is one, else decimal. */
@@ -60,10 +81,20 @@ object Formatter {
             is Rational -> rational(x, settings)
             is Surd -> renderSurd(x)
             is SymConst -> renderConst(x)
-            is Dec -> decimal(x, settings)
+            is Dec -> estimated(x, settings)
         },
         settings,
     )
+
+    private fun estimated(x: Dec, settings: Settings): String {
+        val text = decimal(x, settings)
+        val error = x.absoluteError ?: return text
+        if (error.signum() == 0) return text
+        val unit = BigDecimal.ONE.scaleByPowerOfTen(adjustedExponent(x.value) - settings.displayPrecision + 1)
+        if (x.value.signum() != 0 && error < unit.divide(BigDecimal(2))) return text
+        val shownError = error.round(java.math.MathContext(2, java.math.RoundingMode.CEILING)).stripTrailingZeros()
+        return "$text ± ${shownError.toString()}"
+    }
 
     // -----------------------------------------------------------------------
     // Numeral system (spec 14.4 / M-3) — presentation, never value.
@@ -349,8 +380,16 @@ object Formatter {
     private fun complexString(cx: Complex, settings: Settings, useExact: Boolean): String {
         val fmt: (Num) -> String = { n -> if (useExact) exact(n, settings) else decimal(n, settings) }
         if (cx.im.isZero) return fmt(cx.re)
+        if (cx.im is Dec && cx.im.absoluteError?.signum() != 0) {
+            val imaginary = "(${fmt(cx.im)})i"
+            if (cx.re.isZero) return imaginary
+            val real = fmt(cx.re).let { if (it.contains(" ± ")) "($it)" else it }
+            return "$real + $imaginary"
+        }
         val imMagnitude = cx.im.abs()
-        val imCoeff = if (imMagnitude.compareTo(Num.ONE) == 0) "" else fmt(imMagnitude)
+        val knownMagnitude = imMagnitude !is Dec || imMagnitude.absoluteError?.signum() == 0
+        val coefficient = if (knownMagnitude && imMagnitude.compareTo(Num.ONE) == 0) "" else fmt(imMagnitude)
+        val imCoeff = if (coefficient.contains(" ± ")) "($coefficient)" else coefficient
         return if (cx.re.isZero) {
             (if (cx.im.signum() < 0) "-" else "") + imCoeff + "i"
         } else {

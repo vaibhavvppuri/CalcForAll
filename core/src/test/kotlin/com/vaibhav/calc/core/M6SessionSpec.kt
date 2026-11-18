@@ -76,7 +76,7 @@ class M6SessionSpec : StringSpec({
         val minus = Keypad.basic().key("minus")!!
         var s = Keypad.flickUp(EditorState(), minus)
         s = Editor.insert(s, "1")
-        s.toInput() shouldBe "(1)/()"
+        s.toInput() shouldBe "((1)/())"
     }
     "a flick on a key with no flick action does nothing — it does not fall back to the tap" {
         val plus = Keypad.basic().key("plus")!!
@@ -393,13 +393,13 @@ class M6SessionSpec : StringSpec({
         s = Editor.insert(s, "1")
         s = Editor.moveRight(s)
         s = Editor.insert(s, "2")
-        s.toInput() shouldBe "(1)/(2)"
+        s.toInput() shouldBe "((1)/(2))"
         // select the fraction node at the root
         val sel = Editor.select(s.copy(cursor = com.vaibhav.calc.core.entry.Cursor()), emptyList(), 0)
         val clip = (Clipboard.copy(sel) as CopyResult.Copied).clip
         clip.nodes.size shouldBe 1
         clip.nodes.first().shouldBeInstanceOf<com.vaibhav.calc.core.entry.Fraction>()
-        Clipboard.paste(EditorState(), clip).toInput() shouldBe "(1)/(2)"
+        Clipboard.paste(EditorState(), clip).toInput() shouldBe "((1)/(2))"
     }
     "cut removes what it copied" {
         var s = Editor.insert(EditorState(), "12")

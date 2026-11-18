@@ -7,6 +7,7 @@ import com.vaibhav.calc.core.format.Formatter
 import com.vaibhav.calc.core.format.OutcomeFormatter
 import com.vaibhav.calc.core.graph.*
 import com.vaibhav.calc.core.matrix.Matrix
+import com.vaibhav.calc.core.matrix.Eigen
 import com.vaibhav.calc.core.name.Functions
 import com.vaibhav.calc.core.name.ReservedNames
 import com.vaibhav.calc.core.num.*
@@ -20,10 +21,17 @@ import io.ktor.http.HttpStatusCode
 
 internal data class ApiResponse(val body: Map<String, Any?>, val status: HttpStatusCode = HttpStatusCode.OK)
 
+private fun numberUncertainty(n: Num): Map<String, Any?> = when (n) {
+    is Dec -> n.absoluteError?.let { mapOf("kind" to "bounded", "absoluteError" to it.stripTrailingZeros().toString()) }
+        ?: mapOf("kind" to "unknown")
+    else -> mapOf("kind" to "exact")
+}
+
+
 /** A new service and calculator are created for each request. Nothing persists between callers. */
-internal class ApiService(private val request: ApiRequest) {
-    private val settings = request.settings()
-    private val calc = Calculator(settings)
+internal class ApiService(internal val request: ApiRequest) {
+    internal val settings = request.settings()
+    internal val calc = Calculator(settings)
 
     fun execute(operation: String): ApiResponse = when (operation) {
         "evaluate" -> evaluate()
@@ -38,7 +46,7 @@ internal class ApiService(private val request: ApiRequest) {
         "graph/surface" -> surface()
         "symbolic" -> symbolic()
         "integrate" -> integrate()
-        else -> badRequest("unknown operation")
+        else -> if (operation in ApiTools.operations) ApiTools(this).execute(operation) else badRequest("unknown operation")
     }
 
     private fun evaluate(): ApiResponse {
@@ -66,7 +74,7 @@ internal class ApiService(private val request: ApiRequest) {
     private fun matrix(): ApiResponse {
         request.only("operation", "a", "b", "scalar", "settings")
         val operation = request.string("operation", max = 32)
-        if (operation !in setOf("add", "subtract", "multiply", "determinant", "inverse", "transpose", "rank", "scale")) {
+        if (operation !in setOf("add", "subtract", "multiply", "determinant", "inverse", "transpose", "rank", "scale", "eigenvalues", "characteristicPolynomial")) {
             badRequest("unknown matrix operation '$operation'")
         }
         val needsB = operation in setOf("add", "subtract", "multiply")
@@ -83,6 +91,12 @@ internal class ApiService(private val request: ApiRequest) {
             "transpose" -> matrixResult(a.transpose())
             "rank" -> a.rank()
             "scale" -> matrixResult(a.scalarTimes(number(request.value("scalar"))))
+            "eigenvalues" -> Eigen.eigenvalues(a, settings).let {
+                mapOf("values" to it.values.map(::valueResult), "polynomial" to it.polynomial.map(::numberResult),
+                    "coefficientOrder" to "ascending", "repeatedValues" to "listed once", "eigenvectors" to false)
+            }
+            "characteristicPolynomial" -> mapOf("coefficients" to Eigen.characteristicPolynomial(a).map(::numberResult),
+                "coefficientOrder" to "ascending", "convention" to "det(lambda*I-A)")
             else -> error("operation was validated")
         }
         return success("operation" to operation, "result" to result)
@@ -162,7 +176,7 @@ internal class ApiService(private val request: ApiRequest) {
             is RootResult.Unverified -> ApiResponse(linkedMapOf(
                 "ok" to false, "kind" to "UNVERIFIED", "state" to "unverified", "error" to result.reason,
                 "approximate" to true, "verified" to result.verified.map { rootResult(it) },
-                "candidates" to result.candidates.map { numberResult(it) + ("approximate" to true) },
+                "candidates" to result.candidates.map(::estimatedNumberResult),
             ), HttpStatusCode.UnprocessableEntity)
             is RootResult.Failed -> mathError(result.error)
         }
@@ -235,7 +249,7 @@ internal class ApiService(private val request: ApiRequest) {
         )
         val estimate = NumericCalculus.integrate(input, lower, upper, variable, options).required()
         return success("variable" to variable, "result" to mapOf(
-            "value" to numberResult(estimate.value), "estimatedError" to numberResult(estimate.estimatedError),
+            "value" to estimatedNumberResult(estimate.value), "estimatedError" to estimatedNumberResult(estimate.estimatedError),
             "evaluations" to estimate.evaluations, "method" to estimate.method,
             "approximate" to estimate.approximate, "warnings" to estimate.warnings, "angleMode" to estimate.angleMode,
         ))
@@ -258,7 +272,7 @@ internal class ApiService(private val request: ApiRequest) {
         return lo to hi
     }
 
-    private fun loadRegisters() {
+    internal fun loadRegisters() {
         val raw = request.fields["registers"] ?: return
         val registers = (raw as? JsonValue.Obj)?.fields ?: badRequest("registers must be an object")
         for ((name, value) in registers) {
@@ -267,7 +281,7 @@ internal class ApiService(private val request: ApiRequest) {
         }
     }
 
-    private fun number(value: JsonValue): Num {
+    internal fun number(value: JsonValue): Num {
         val text = when (value) {
             is JsonValue.Str -> value.value
             is JsonValue.Number -> value.text
@@ -297,18 +311,31 @@ internal class ApiService(private val request: ApiRequest) {
         if (size > ApiLimits.DATA_POINTS) limit("'$name' exceeds ${ApiLimits.DATA_POINTS} values")
     }
 
-    private fun numberResult(n: Num): Map<String, Any?> = mapOf(
-        "exact" to Formatter.input(n), "decimal" to Formatter.decimal(n, settings), "approximate" to (n is Dec))
+    internal fun numberResult(n: Num): Map<String, Any?> = mapOf(
+        "exact" to Formatter.input(n), "decimal" to Formatter.decimal(n, settings), "approximate" to (n is Dec),
+        "input" to Formatter.reusableInput(n), "uncertainty" to numberUncertainty(n))
 
-    private fun valueResult(value: Value): Map<String, Any?> = mapOf(
-        "kind" to when (value) { is RealValue -> "real"; is ComplexValue -> "complex"; is QuantityValue -> "quantity" },
-        "exact" to Formatter.input(value),
-        "decimal" to Formatter.decimal(value, settings),
-        "approximate" to when (value) {
-            is RealValue -> value.num is Dec
-            is ComplexValue -> value.cx.re is Dec || value.cx.im is Dec
-            is QuantityValue -> value.q.value is Dec
-        })
+    /** A sampling estimate's coordinate enclosure is not a bound on the mathematical root/limit. */
+    internal fun estimatedNumberResult(n: Num): Map<String, Any?> = numberResult(n) + mapOf(
+        "approximate" to true, "input" to "approx(${Formatter.input(n)})", "uncertainty" to mapOf("kind" to "unknown"))
+
+    private fun valueResult(value: Value): Map<String, Any?> {
+        if (value is RealValue) return numberResult(value.num) + ("kind" to "real")
+        val fields = mapOf(
+            "kind" to when (value) { is ComplexValue -> "complex"; is QuantityValue -> "quantity"; else -> error("real handled above") },
+            "exact" to Formatter.input(value), "input" to Formatter.reusableInput(value),
+            "decimal" to Formatter.decimal(value, settings),
+            "approximate" to when (value) {
+                is ComplexValue -> value.cx.re is Dec || value.cx.im is Dec
+                is QuantityValue -> value.q.value is Dec
+                else -> false
+            })
+        return fields + when (value) {
+            is ComplexValue -> mapOf("real" to numberResult(value.cx.re), "imaginary" to numberResult(value.cx.im))
+            is QuantityValue -> mapOf("coefficient" to numberResult(value.q.value))
+            else -> error("real handled above")
+        }
+    }
 
     private fun matrixResult(m: Matrix): Map<String, Any?> = mapOf("rows" to m.rows, "columns" to m.cols,
         "cells" to (0 until m.rows).map { r -> (0 until m.cols).map { c -> numberResult(m.get(r, c)) } })
@@ -318,11 +345,11 @@ internal class ApiService(private val request: ApiRequest) {
     private fun rootResult(r: VerifiedRoot, numericMethod: Boolean = false): Map<String, Any?> {
         // A bisection coordinate may be stored as an exact Rational while only approximating the root.
         val approximate = numericMethod || rootIsApproximate(r)
-        return mapOf("x" to (numberResult(r.x) + ("approximate" to approximate)),
+        return mapOf("x" to if (approximate) estimatedNumberResult(r.x) else numberResult(r.x),
             "residual" to numberResult(r.residual), "approximate" to approximate)
     }
 
-    private fun sampleResult(s: Sample): Map<String, Any?> = when (s) {
+    internal fun sampleResult(s: Sample): Map<String, Any?> = when (s) {
         is Sample.Defined -> mapOf("state" to "defined", "x" to numberResult(s.x), "y" to numberResult(s.y))
         is Sample.Undefined -> mapOf("state" to "undefined", "x" to numberResult(s.x), "kind" to s.cause.kind.name, "error" to s.cause.detail)
         is Sample.Unevaluated -> mapOf("state" to "unevaluated", "x" to numberResult(s.x), "kind" to s.error.kind.name, "error" to s.error.detail)
@@ -346,9 +373,9 @@ internal class ApiService(private val request: ApiRequest) {
     private fun success(vararg fields: Pair<String, Any?>) = ApiResponse(linkedMapOf("ok" to true, *fields))
 
     companion object {
-        val operations = listOf("evaluate", "convert", "matrix", "statistics", "regression", "base", "graph/sample", "graph/roots", "graph/intersections", "graph/surface", "symbolic", "integrate")
+        val operations = listOf("evaluate", "convert", "matrix", "statistics", "regression", "base", "graph/sample", "graph/roots", "graph/intersections", "graph/surface", "symbolic", "integrate") + ApiTools.operations
 
-        fun capabilities(): Map<String, Any?> = mapOf("ok" to true, "apiVersion" to 1, "stateful" to false,
+        fun capabilities(): Map<String, Any?> = mapOf("ok" to true, "apiVersion" to 1, "releaseVersion" to "2.0.0", "stateful" to false,
             "requiresNetwork" to false, "numberEncoding" to "strings preserve exact and arbitrary-precision values",
             "operations" to operations, "limits" to mapOf("bodyBytes" to ApiLimits.BODY_BYTES,
                 "expressionCharacters" to ApiLimits.EXPRESSION_CHARS, "expressionNodes" to ApiLimits.EXPRESSION_NODES,
@@ -357,7 +384,9 @@ internal class ApiService(private val request: ApiRequest) {
                 "rootSamples" to ApiLimits.ROOT_SAMPLES, "computePrecision" to 50, "displayPrecision" to 32,
                 "rootEvaluations" to RootSearchOptions().maxEvaluations, "rootMillis" to RootSearchOptions().maxMillis,
                 "concurrentCalculations" to ApiLimits.CONCURRENT_CALCULATIONS,
-                "integrationEvaluations" to ApiLimits.INTEGRATION_EVALUATIONS, "surfaceGridSide" to ApiLimits.SURFACE_GRID_SIDE))
+                "integrationEvaluations" to ApiLimits.INTEGRATION_EVALUATIONS, "surfaceGridSide" to ApiLimits.SURFACE_GRID_SIDE,
+                "tableRows" to ApiTools.TABLE_ROWS, "sumTerms" to ApiTools.SUM_TERMS,
+                "productTerms" to ApiTools.PRODUCT_TERMS, "seriesMillis" to ApiTools.SERIES_MILLIS))
 
         fun functions(): Map<String, Any?> = mapOf("ok" to true, "functions" to Functions.ALL.map {
             mapOf("name" to it.name, "displayName" to Functions.displayName(it.name), "arities" to it.arities.sorted(),
@@ -370,10 +399,14 @@ internal class ApiService(private val request: ApiRequest) {
             return mapOf("ok" to true, "physical" to physical.map { p -> mapOf(
                 "name" to p.name, "symbol" to p.symbol, "value" to Formatter.exact(p.value, settings),
                 "uncertainty" to Formatter.exact(p.uncertainty, settings), "unit" to p.unit,
-                "dimensions" to p.dimension.exponents, "exact" to p.isExact) },
+                "dimensions" to p.dimension.exponents, "exact" to p.isExact,
+                "approximate" to (p.value is Dec), "input" to Formatter.reusableInput(p.toValue()),
+                "evaluationUncertainty" to numberUncertainty(p.value),
+                "uncertaintyMeaning" to if (p.isExact) "exact definition" else "standard statistical uncertainty, not a hard error bound") },
                 "mathematical" to Constants.SYMBOLS.filter { Constants.physical(it) == null }.sorted().map { name ->
                     val n = Constants.math(name, settings.computeMc) ?: error("constant registry mismatch")
-                    mapOf("name" to name, "exact" to Formatter.exact(n, settings), "decimal" to Formatter.decimal(n, settings))
+                    mapOf("name" to name, "exact" to Formatter.exact(n, settings), "decimal" to Formatter.decimal(n, settings),
+                        "approximate" to (n is Dec), "input" to Formatter.reusableInput(n), "uncertainty" to numberUncertainty(n))
                 })
         }
 

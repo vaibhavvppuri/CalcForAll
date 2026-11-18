@@ -15,8 +15,9 @@ android {
         applicationId = "com.vaibhav.calc"
         minSdk = 23
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0-preview"
+        versionCode = 5
+        versionName = "2.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -37,7 +38,10 @@ android {
 
     testOptions {
         // Local unit tests are kotest (JUnit 5), same as core — they run headless
-        // on the JVM; there is no instrumented/Robolectric infra in this module.
+        // on the JVM. src/androidTest holds the device gate (1.3): it runs the engine
+        // and every catalogued tool on a real Android runtime, which is the only place
+        // a Java member newer than minSdk shows itself. Run it with an emulator or
+        // phone attached: `gradle :android:connectedDebugAndroidTest`.
         unitTests.all { it.useJUnitPlatform() }
     }
 }
@@ -64,4 +68,7 @@ dependencies {
 
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

@@ -5,6 +5,7 @@ import com.vaibhav.calc.core.format.Formatter
 import com.vaibhav.calc.core.format.OutcomeFormatter
 import com.vaibhav.calc.core.num.*
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
 
@@ -29,6 +30,18 @@ class LosslessFormatterSpec : StringSpec({
             val value = Calculator().evaluate(source).getOrThrow()
             Calculator().evaluate(Formatter.input(value)).getOrThrow() shouldBe value
         }
+    }
+    "a multiple of e is copied with its product sign, so it reads back and is never taken for an exponent" {
+        listOf("2*e", "3*e/2", "-5*e", "e/7", "e").forEach { source ->
+            val value = Calculator().evaluate(source).getOrThrow()
+            Calculator().evaluate(Formatter.input(value)).getOrThrow() shouldBe value
+        }
+        val twoE = Calculator().evaluate("2*e").getOrThrow()
+        Formatter.input(twoE) shouldBe "2*e"
+        Formatter.exact(twoE, Settings()) shouldBe "2e" // the display form is unchanged
+        // Typing on after a pasted value keeps the value: 2·e + 3, never 2 × 10³.
+        val continued = Calculator().evaluate(Formatter.input(twoE) + "+3").getOrThrow() as RealValue
+        continued.num.toBigDecimal(Num.MC).toDouble() shouldBe (2 * Math.E + 3 plusOrMinus 1e-12)
     }
     "scientific decimal storage is copied compactly without invented trailing zeros" {
         val value = Dec(BigDecimal("1.23456789E+1000"))

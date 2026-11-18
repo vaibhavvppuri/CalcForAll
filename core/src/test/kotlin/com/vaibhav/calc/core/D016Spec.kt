@@ -108,7 +108,9 @@ class D016Spec : StringSpec({
     }
     "non-polynomial and high-degree equations are typed errors, not guesses" {
         calc().routeErr("sin(x) = 0").message shouldContain "cannot solve"
-        calc().routeErr("x^3 = 8").message shouldContain "degree"
+        // 1.2 solves polynomial equations up to degree 8 (PolynomialRootsSpec); the
+        // typed refusal now starts at degree 9.
+        calc().routeErr("x^9 = 8").message shouldContain "degree"
         calc().routeErr("x*y=6\nx+y=5").message shouldContain "linear"
     }
 

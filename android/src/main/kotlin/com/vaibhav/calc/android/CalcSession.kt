@@ -55,6 +55,38 @@ class CalcSession(private val calculator: Calculator = Calculator()) {
 
     fun replaceText(text: String): CalcUiState = replaceTextResult(text).state
 
+    /** Recognition is a new calculation. A failed review must not overwrite an edited tape row. */
+    fun saveRecognition(text: String): TextReplacement {
+        if (text.length > RecognitionCalculator.MAX_CHARS || !boundedNesting(text))
+            return rejectedReplacement("The recognized expression is too large.")
+        val before = ui
+        val beforeOutcome = lastOutcome
+        val beforeUndo = undoEdits.toList()
+        val beforeRedo = redoEdits.toList()
+        fun failed(message: String): TextReplacement {
+            if (tape.entries().size > before.entries.size) tape.undo()
+            restoreUi(before, beforeOutcome)
+            undoEdits.clear(); undoEdits.addAll(beforeUndo)
+            redoEdits.clear(); redoEdits.addAll(beforeRedo)
+            return rejectedReplacement(message)
+        }
+        return try {
+            val normalized = Editor.insert(EditorState(), text.trim()).toInput()
+            val review = RecognitionCalculator.preview(normalized, settings, snapshotEnvironment())
+            if (review !is RecognitionPreview.Answer) return rejectedReplacement(
+                (review as? RecognitionPreview.NeedsEdit)?.message ?: "Enter an expression first.")
+            val replacement = replaceTextResult(normalized)
+            if (!replacement.accepted) return replacement
+            ui = ui.copy(editingId = null)
+            commit()
+            ui.error?.let { failed(it) } ?: TextReplacement(true, ui)
+        } catch (problem: Exception) {
+            // Tape validates/recomputes before changing its state. Restore the editor too
+            // when that pre-transaction validation refuses a full/exhausted history.
+            failed(problem.message ?: "The reviewed calculation could not be saved.")
+        }
+    }
+
     /** Commit tool metadata only if the entire replacement passes the editor limits. */
     fun replaceToolText(text: String, angle: AngleMode? = null, notice: String? = null): TextReplacement {
         val replacement = replaceTextResult(text)
@@ -309,9 +341,7 @@ class CalcSession(private val calculator: Calculator = Calculator()) {
 
     /** Approximate numbers remain explicitly approximate when pasted back into the app. */
     private fun copyExpression(value: Value): String {
-        fun number(n: com.vaibhav.calc.core.num.Num): String = Formatter.input(n).let {
-            if(n is com.vaibhav.calc.core.num.Dec) "approx($it)" else it
-        }
+        fun number(n: com.vaibhav.calc.core.num.Num): String = Formatter.reusableInput(n)
         return when(value) {
             is RealValue -> number(value.num)
             is ComplexValue -> "(${number(value.cx.re)})+(${number(value.cx.im)})i"

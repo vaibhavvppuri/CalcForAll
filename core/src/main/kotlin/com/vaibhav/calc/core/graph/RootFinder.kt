@@ -59,6 +59,8 @@ object RootFinder {
         if (sampleCount !in 2..MAX_SAMPLES) return@guarded unsupported("root sample count must be from 2 to $MAX_SAMPLES")
         if (options.maxEvaluations !in 1..MAX_EVALUATIONS) return@guarded unsupported("root evaluation budget must be from 1 to $MAX_EVALUATIONS")
         if (options.maxMillis !in 1..MAX_MILLIS) return@guarded unsupported("root time budget must be from 1 to $MAX_MILLIS ms")
+        xMin.requireKnownPoint("root search bounds")
+        xMax.requireKnownPoint("root search bounds")
         if (xMin >= xMax) return@guarded RootResult.Failed(EvalError.Domain("root search requires xMin < xMax", null))
         val budget = SearchBudget(options)
         if (!budget.check()) return@guarded budget.failed()
@@ -117,7 +119,10 @@ object RootFinder {
     ): RootResult = when (p.degree) {
         -1 -> RootResult.Unverified(emptyList(), emptyList(),
             "the function is identically zero — every x in range is a root, so there is no finite root set")
-        0 -> RootResult.Found(emptyList(), "exact (non-zero constant has no roots)")
+        0 -> {
+            p.coeff(0).establishedSign("the constant function's nonzeroness")
+            RootResult.Found(emptyList(), "exact (non-zero constant has no roots)")
+        }
         1 -> {
             val root = Solvers.linear(p.coeff(1), p.coeff(0), settings).root
             if (!budget.check()) budget.failed()
@@ -148,9 +153,11 @@ object RootFinder {
                 is Sample.Undefined -> { previous = null; continue }
                 is Sample.Defined -> {
                     defined++
-                    if (sample.y.isZero) candidates[sample.x] = Candidate(sample.x, Num.ZERO)
+                    val sign = sample.y.establishedSign("root scan sample sign")
+                    if (sign == 0) candidates[sample.x] = Candidate(sample.x, Num.ZERO)
                     val before = previous
-                    if (before != null && before.y.signum() != 0 && sample.y.signum() != 0 && before.y.signum() != sample.y.signum()) {
+                    val beforeSign = before?.y?.establishedSign("root scan sample sign")
+                    if (before != null && beforeSign != 0 && sign != 0 && beforeSign != sign) {
                         val root = bisect(f, before, sample, budget) ?: return budget.failed()
                         candidates[root.x] = root
                     }
@@ -206,12 +213,12 @@ object RootFinder {
                     BinaryOp.DIV -> {
                         if (dependent[node.right] == true) return refuse("a variable-dependent denominator")
                         val denominator = budget.constant(f,node.right) ?: return false
-                        if (denominator.isZero) return refuse("a zero denominator")
+                        if (denominator.establishedSign("root continuity denominator") == 0) return refuse("a zero denominator")
                     }
                     BinaryOp.POW -> {
                         if (dependent[node.left] != true) {
                             val base = budget.constant(f,node.left) ?: return false
-                            if (base <= Num.ZERO) return refuse("a non-positive base with a variable exponent")
+                            if (base.establishedSign("root continuity exponential base") <= 0) return refuse("a non-positive base with a variable exponent")
                         } else {
                             if (dependent[node.right] == true) return refuse("a variable base and exponent")
                             val exponent = budget.constant(f,node.right) ?: return false
@@ -241,21 +248,21 @@ object RootFinder {
     private fun bisect(f: PlottableFunction, a: Sample.Defined, b: Sample.Defined, budget: SearchBudget): Candidate? {
         var lo = a.x
         var hi = b.x
-        var loSign = a.y.signum()
+        var loSign = a.y.establishedSign("root bracket endpoint sign")
         var loValue = a.y
         var hiValue = b.y
         // Absolute tolerance alone accepts a tiny-scaled pole or step. Demand
         // a substantial reduction from BOTH original endpoint residuals too.
         // The smaller endpoint sets the scale; the larger can be arbitrarily
         // large merely because one initial sample was very close to a pole.
-        val loLimit = a.y.abs() * RELATIVE_RESIDUAL_FACTOR
-        val hiLimit = b.y.abs() * RELATIVE_RESIDUAL_FACTOR
+        val loLimit = magnitudeLower(a.y) * RELATIVE_RESIDUAL_FACTOR
+        val hiLimit = magnitudeLower(b.y) * RELATIVE_RESIDUAL_FACTOR
         val relativeLimit = minOf(loLimit, hiLimit)
         val residualLimit = minOf(VERIFY_TOLERANCE, relativeLimit)
         fun convergedCandidate(): Candidate? {
-            if ((hi - lo).abs() > BRACKET_TOLERANCE || loValue.abs() > loLimit || hiValue.abs() > hiLimit) return null
-            val best = if (loValue.abs() <= hiValue.abs()) Sample.Defined(lo,loValue) else Sample.Defined(hi,hiValue)
-            return if (best.y.abs() <= residualLimit) Candidate(best.x,residualLimit) else null
+            if (magnitudeUpper(hi - lo) > BRACKET_TOLERANCE || magnitudeUpper(loValue) > loLimit || magnitudeUpper(hiValue) > hiLimit) return null
+            val best = if (magnitudeUpper(loValue) <= magnitudeUpper(hiValue)) Sample.Defined(lo,loValue) else Sample.Defined(hi,hiValue)
+            return if (magnitudeUpper(best.y) <= residualLimit) Candidate(best.x,residualLimit) else null
         }
         repeat(MAX_BISECTIONS) {
             if (!budget.check()) return null
@@ -276,7 +283,12 @@ object RootFinder {
                 }
                 is Sample.Defined -> {
                     if (sample.y.isZero) return Candidate(mid, Num.ZERO)
-                    if (sample.y.signum() == loSign) { lo = mid; loValue = sample.y; loSign = sample.y.signum() }
+                    // A narrow interval enclosing zero can pass the same residual/width checks,
+                    // but its nominal sign must never choose one half of the bracket.
+                    if (magnitudeUpper(hi - lo) <= BRACKET_TOLERANCE && magnitudeUpper(sample.y) <= residualLimit)
+                        return Candidate(mid, residualLimit)
+                    val sign = sample.y.establishedSign("root bisection sample sign")
+                    if (sign == loSign) { lo = mid; loValue = sample.y; loSign = sign }
                     else { hi = mid; hiValue = sample.y }
                 }
             }
@@ -301,13 +313,24 @@ object RootFinder {
                 is Sample.Undefined -> rejected += candidate
                 is Sample.Defined -> {
                     val residual = sample.y.abs()
-                    if (residual <= trial.residualLimit) verified += VerifiedRoot(candidate, residual) else rejected += candidate
+                    if (magnitudeUpper(sample.y) <= trial.residualLimit) verified += VerifiedRoot(candidate, residual) else rejected += candidate
                 }
             }
         }
         return if (rejected.isEmpty()) RootResult.Found(verified, method)
         else RootResult.Unverified(verified, rejected,
             "substituting the candidate back into the function did not confirm a root (it may sit on an asymptote)")
+    }
+
+    /** Bounds are evidence for a residual check; a displayed point alone supplies no evidence. */
+    private fun magnitudeUpper(value: Num): Num {
+        val interval = value.bounds() ?: throw ArithFault.Unsupported("root residual has no established error bound")
+        return Num.ofDecimal(maxOf(interval.lower.abs(), interval.upper.abs()))
+    }
+
+    private fun magnitudeLower(value: Num): Num {
+        val interval = value.bounds() ?: throw ArithFault.Unsupported("root endpoint has no established error bound")
+        return if (interval.containsZero) Num.ZERO else Num.ofDecimal(minOf(interval.lower.abs(), interval.upper.abs()))
     }
 
     private class SearchBudget(private val options: RootSearchOptions) {
@@ -320,7 +343,8 @@ object RootFinder {
             if (failure != null) return false
             when {
                 Thread.currentThread().isInterrupted || options.shouldStop?.invoke() == true -> stop("root search was cancelled before completion")
-                (System.nanoTime() - started) / 1_000_000 >= options.maxMillis -> stop("root search exceeded its time budget before completion")
+                (System.nanoTime() - started) / 1_000_000 >= options.maxMillis -> stop(
+                    "root search exceeded its ${options.maxMillis} ms time budget before completion after $evaluations attempted evaluations")
             }
             return failure == null
         }

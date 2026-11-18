@@ -15,9 +15,9 @@ import com.vaibhav.calc.core.name.ReservedNames
  * folding a constant sub-expression, and the same three-way answer. They call
  * this — not "the same logic", the same function — so they cannot drift.
  */
-fun structureExtractor(settings: Settings, env: Environment): StructureExtractor =
+fun structureExtractor(settings: Settings, env: Environment, measuring: Boolean = false): StructureExtractor =
     StructureExtractor(ReservedNames.UNKNOWNS) { e ->
-        when (val r = Evaluator(settings, env).eval(e)) {
+        when (val r = (if (measuring) Evaluator(settings, env, true) else Evaluator(settings, env)).eval(e)) {
             is CalcResult.Ok -> when (val v = r.value) {
                 is RealValue -> Extraction.Extracted(v.num)
                 else -> Extraction.NotPolynomial("a non-real value cannot appear in a polynomial equation")

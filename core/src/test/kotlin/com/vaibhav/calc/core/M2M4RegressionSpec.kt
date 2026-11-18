@@ -33,10 +33,13 @@ class M2M4RegressionSpec : StringSpec({
     // #2 — value-equal matrices with different Num representations must hash equal.
     "Matrix equals/hashCode contract holds across Num representations" {
         val a = Matrix.of(listOf(listOf(Num.of(2))))                     // Rational 2/1
-        val b = Matrix.of(listOf(listOf(Dec(BigDecimal("2")))))          // Dec 2
+        val b = Matrix.of(listOf(listOf(Dec(BigDecimal("2"), BigDecimal.ZERO)))) // Explicit known-point Dec 2
         (a == b) shouldBe true
         (a.hashCode() == b.hashCode()) shouldBe true
         hashSetOf(a).contains(b) shouldBe true
+        val uncertain = Matrix.of(listOf(listOf(Dec(BigDecimal("2")))))
+        (a == uncertain) shouldBe false
+        hashSetOf(a).contains(uncertain) shouldBe false
     }
 
     // #3 — sample variance/stdev are undefined (null) for a single point.

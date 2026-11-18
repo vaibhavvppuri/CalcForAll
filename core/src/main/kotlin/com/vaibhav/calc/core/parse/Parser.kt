@@ -128,7 +128,21 @@ class Parser private constructor(private val tokens: List<Token>) {
                 // Decided statically from the unit table — never from stored state.
                 if (t.type == TokenType.IDENT && ReservedNames.isUnit(t.lexeme) && Bp.UNIT > minBp) {
                     next()
-                    left = UnitApply(left, t.lexeme, span(left.span, t.span))
+                    left = if (peek().type == TokenType.CARET && !ReservedNames.isNumberScale(t.lexeme)) {
+                        // A power written on a unit belongs to the unit: `5 m^2` is five square
+                        // metres, the way `2x^2` is 2·(x²). Read the other way the number went up
+                        // with it — `5 m^2` was 25 m², and the engine's own `6 s²` came back as
+                        // 36 s² (Article 12). `(5 m)^2` still squares the whole quantity.
+                        // Number words are the exception: `5 lakh` is the number 500000, so
+                        // `5 lakh^2` is 500000² and takes the ordinary path below.
+                        next()
+                        val exponent = parseExpr(Bp.POW - 1)
+                        val one = UnitApply(NumberLit(Num.ONE, t.span), t.lexeme, t.span)
+                        val powered = Binary(BinaryOp.POW, one, exponent, span(t.span, exponent.span))
+                        Binary(BinaryOp.MUL, left, powered, span(left.span, exponent.span))
+                    } else {
+                        UnitApply(left, t.lexeme, span(left.span, t.span))
+                    }
                     continue@loop
                 }
 

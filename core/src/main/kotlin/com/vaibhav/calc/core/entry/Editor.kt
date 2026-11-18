@@ -1,5 +1,20 @@
 package com.vaibhav.calc.core.entry
 
+import com.vaibhav.calc.core.ast.Assignment
+import com.vaibhav.calc.core.ast.Binary
+import com.vaibhav.calc.core.ast.Call
+import com.vaibhav.calc.core.ast.Equation
+import com.vaibhav.calc.core.ast.Expr
+import com.vaibhav.calc.core.ast.ExprStatement
+import com.vaibhav.calc.core.ast.NameRef
+import com.vaibhav.calc.core.ast.NumberLit
+import com.vaibhav.calc.core.ast.Postfix
+import com.vaibhav.calc.core.ast.Unary
+import com.vaibhav.calc.core.ast.UnitApply
+import com.vaibhav.calc.core.error.CalcResult
+import com.vaibhav.calc.core.name.ReservedNames
+import com.vaibhav.calc.core.parse.Parser
+
 /**
  * The editing operations for 2D natural entry (spec 11.2, 1.9). Pure functions on
  * an immutable [EditorState].
@@ -108,7 +123,7 @@ object Editor {
 
     /** `^` — the trailing operand becomes the base; the cursor lands in the exponent. */
     fun typePower(state: EditorState): EditorState =
-        wrapTrailingOperand(state, Field.BASE, Field.EXPONENT) { run -> Power(Row(run), Row()) }
+        wrapTrailingOperand(state, Field.BASE, Field.EXPONENT, numberWords = true) { run -> Power(Row(run), Row()) }
 
     /** `√` — a prefix structure; the cursor lands in the radicand. */
     fun typeRoot(state: EditorState): EditorState =
@@ -325,11 +340,13 @@ object Editor {
         state: EditorState,
         firstField: Field,
         secondField: Field,
+        numberWords: Boolean = false,
         build: (List<Node>) -> Node,
     ): EditorState {
         val s = deleteSelectionIfAny(state)
         val row = s.root.rowAt(s.cursor.path)
         val start = trailingOperandStart(row, s.cursor.offset)
+            .let { if (numberWords) withNumberWords(row, it, s.cursor.offset) else it }
         val run = row.nodes.subList(start, s.cursor.offset).toList()
 
         val nodes = row.nodes.toMutableList()
@@ -357,6 +374,82 @@ object Editor {
             if (n is Atom && n.char.isOperandChar()) i-- else break
         }
         return i
+    }
+
+    /**
+     * A number word belongs to the number in front of it — `5 lakh` IS 500000 — so the power
+     * key raises the word together with its operand, exactly as the parser reads the typed
+     * `5 lakh^2`. Capturing only the word drew `5 lakh` with a raised 2 and evaluated
+     * 5 × (1 lakh)², a fifth of what the screen showed.
+     *
+     * What the word's operand IS, is the parser's decision, and it is taken from the parser:
+     * in `√4 lakh` it is √4, in `5! lakh` it is 5!, in `-4 lakh` it is 4. A second set of capture
+     * rules here would be a second implementation of the grammar (Article 12); the first
+     * attempt at one left the root outside the base, and `√4 lakh` squared came out as 400000.
+     * When the text before the cursor does not parse, a structural reading stands in: the
+     * word, the spaces in front of it, and the operand run or structure before those.
+     * Dimensioned units are left alone: `5 m` and the power key is five square metres.
+     */
+    private fun withNumberWords(row: Row, start: Int, offset: Int): Int {
+        if (!isNumberWord(row, start, offset)) return start
+        return parsedOperandStart(row, offset) ?: structuralOperandStart(row, start, offset)
+    }
+
+    /**
+     * Where the parser's operand for the trailing word begins, as a node index; null when the
+     * text is not a complete entry. The whole grammar is used — a row may be an equation
+     * (`x = 5 lakh`) — and the trailing expression of its last statement is what ends the text.
+     */
+    private fun parsedOperandStart(row: Row, offset: Int): Int? {
+        val before = row.nodes.subList(0, offset)
+        val text = Row(before).toInput()
+        val program = (Parser.parseProgram(text) as? CalcResult.Ok)?.value ?: return null
+        val tree = when (val last = program.statements.last()) {
+            is ExprStatement -> last.expr
+            is Equation -> last.rhs
+            is Assignment -> return null // the text ends in a register name, not a number word
+        }
+        val application = trailingUnit(tree, text.length) ?: return null
+        // The row's text is the concatenation of its nodes' text. The operand begins in the node
+        // whose text holds that position: at its first character for a digit, or just inside its
+        // own bracket for a bracket group, a power or a fraction — `(2+3) lakh` has the span of
+        // `2+3`, one character into the group. Either way the whole node belongs to the base.
+        var at = 0
+        before.forEachIndexed { index, node ->
+            val next = at + node.toInput().length
+            if (application.span.start < next) return index
+            at = next
+        }
+        return null
+    }
+
+    private fun structuralOperandStart(row: Row, start: Int, offset: Int): Int {
+        var from = start
+        var to = offset
+        while (isNumberWord(row, from, to)) {
+            var gap = from
+            while (gap > 0 && (row.nodes[gap - 1] as? Atom)?.char == ' ') gap--
+            val before = trailingOperandStart(row, gap)
+            if (before == gap) break // nothing stands in front of the word
+            to = gap
+            from = before
+        }
+        return from
+    }
+
+    /** The unit application that ends the text at [end]: the trailing word with the operand the parser gave it. */
+    private fun trailingUnit(e: Expr, end: Int): UnitApply? = when (e) {
+        is UnitApply -> if (e.span.end == end) e else null
+        is Binary -> trailingUnit(e.right, end)
+        is Unary -> trailingUnit(e.operand, end)
+        is Postfix, is Call, is NumberLit, is NameRef -> null
+    }
+
+    private fun isNumberWord(row: Row, from: Int, to: Int): Boolean {
+        if (from >= to) return false
+        val word = StringBuilder()
+        for (k in from until to) word.append((row.nodes[k] as? Atom ?: return false).char)
+        return ReservedNames.isNumberScale(word.toString())
     }
 
     private fun Char.isOperandChar(): Boolean = isLetterOrDigit() || this == '.'
