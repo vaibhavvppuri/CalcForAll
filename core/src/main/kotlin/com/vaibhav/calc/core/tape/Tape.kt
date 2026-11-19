@@ -97,6 +97,28 @@ class Tape(private var settings: Settings = Settings()) {
     val canUndo: Boolean get() = undoStack.isNotEmpty()
     val canRedo: Boolean get() = redoStack.isNotEmpty()
 
+    /** Opaque, in-process rollback state; unlike an archive it retains undo/redo and IDs. */
+    class Checkpoint internal constructor(
+        internal val owner: Tape,
+        internal val state: TapeState,
+        internal val undo: List<TapeState>,
+        internal val redo: List<TapeState>,
+        internal val nextId: Int,
+        internal val settings: Settings,
+    )
+
+    /** Callers must serialize mutations while holding a checkpoint. No expressions are re-evaluated. */
+    fun checkpoint() = Checkpoint(this, current, undoStack.toList(), redoStack.toList(), nextId, settings)
+
+    fun restore(checkpoint: Checkpoint) {
+        require(checkpoint.owner === this) { "A tape checkpoint belongs to its original tape." }
+        current = checkpoint.state
+        undoStack.clear(); undoStack.addAll(checkpoint.undo)
+        redoStack.clear(); redoStack.addAll(checkpoint.redo)
+        nextId = checkpoint.nextId
+        settings = checkpoint.settings
+    }
+
     /**
      * Independent memory for graphs/tools. A parseable assignment whose latest
      * result is failed, blocked or cyclic clears that register rather than

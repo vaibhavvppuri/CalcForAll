@@ -79,7 +79,7 @@ object InkLineRecognizer {
             if (dot && box.centerY < center)
                 return reject("A raised dot is ambiguous. Write decimal dots near the baseline.")
             val raw = if (dot) listOf(InkCandidate(".", 0f)) else InkRecognizer.recognize(group)
-            val supported = "0123456789.+−×/=()^xπ"
+            val supported = "0123456789.+−×/=()^xπ%!"
             if (raw.isNotEmpty() && raw.first().symbol !in supported)
                 return reject("Symbol ${index + 1} needs single-symbol mode. Radical bars and two-dimensional layouts are not supported in a line.")
             val candidates = raw.filter { it.symbol in supported }

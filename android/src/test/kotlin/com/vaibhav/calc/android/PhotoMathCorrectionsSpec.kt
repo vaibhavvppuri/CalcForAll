@@ -56,6 +56,17 @@ class PhotoMathCorrectionsSpec : StringSpec({
         correction.expression shouldBe "sqrt(1.44)"
         value(correction.expression) shouldBe Num.of(6, 5)
     }
+    "multiple supported root misreads get one explicit combined correction" {
+        val tokens = listOf(token("V", 0, 0, 20, 40), token("16", 22, 0, 50, 40),
+            token("+", 60, 10, 80, 30), token("V", 90, 0, 110, 40), token("9", 112, 0, 130, 40))
+        val options = PhotoMathCorrections.suggest(tokens, setOf(0, 3))
+        value(options.first().expression) shouldBe Num.of(7)
+        options.first().explanation.contains("every marked symbol") shouldBe true
+        (options.size <= PhotoMathCorrections.MAX_CORRECTIONS) shouldBe true
+        tokens.map { it.text } shouldBe listOf("V", "16", "+", "V", "9")
+        val onlyFirstHasEvidence = PhotoMathCorrections.suggest(tokens, setOf(0))
+        onlyFirstHasEvidence.single().expression.contains("V9") shouldBe true
+    }
     "overlapping OCR fragments get an explicit removal option without losing the source mark" {
         val tokens = listOf(token("N", 373, 266, 433, 284), token("3", 451, 207, 478, 253),
             token("2", 378, 274, 432, 364), token("+", 520, 274, 598, 364), token("1", 618, 274, 668, 364))

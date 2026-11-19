@@ -1,5 +1,64 @@
 # Verification record
 
+## CalcForAll 2.1.0 — host, device and packaged-runtime checks passed
+
+**Status on 14 November 2026:** Gate2 passed **1,384 host tests**, **21/21 native tests on each of API 23 and API 34**, and **19/19 packaged-API smoke checks**. The same APK passed the recorded offline manual workflows, signature verification, packaged-notice and static native-library checks. Android version is `2.1.0`, code **6**; the local API is `2.1.0`. This increment starts from delivered 2.0 source `f38a2ac`. Source/archive integrity is established separately by the release manifest and final package-audit receipt. The 2.0 records below remain historical evidence for their own artifacts.
+
+### Host gate and artifact identity
+
+`work/2026-11-14-v2.1/all-modules-2.log` ended **BUILD SUCCESSFUL in 10m 56s**. The gate completed core checks, tests, lint, app/test APK assembly and API distribution tasks; unchanged tasks could be up-to-date. JUnit XML and `artifact-final-summary.json` establish these results:
+
+| Check | Completed result |
+| --- | --- |
+| Core | **1,040 tests / 82 suites** |
+| Android local unit tests | **266 tests / 35 suites** |
+| API | **69 tests / 4 suites** |
+| Battery harness | **9 tests / 4 suites** |
+| Combined host tests | **1,384; 0 failures, errors or skipped tests** |
+| Core Android-import boundary | **158 files; no Android imports** |
+| Battery case records | **1,910 PASS, 110 PROBE, 0 FAIL**; PROBE is exploratory, not a passing assertion |
+| Android lint | **0 errors, 4 warnings, 4 informational findings** |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `android-debug.apk` | 56,596,614 | `95b6d8f710aace26e823c683b68eabdd10f141fda3249505fd0d94145a3d088b` |
+| `api-2.1.0.zip` | 10,722,246 | `716eecdfc8094f15360e95be28e875e91cfb15b44de7db411a8a46bde877ac78` |
+
+The new regressions cover complete OCR token coverage, bounded input, crop/orientation geometry, serialized native recognition completion, retained workspaces, swept erasing and resize mapping, percent/factorial candidates, session checkpoints and durable-save rollback/recovery. Tests of synthetic glyphs establish those fixtures, not general recognition accuracy.
+
+### Same-APK native and recorded UI checks
+
+Both installed APK hashes matched the artifact above. **API 23 passed 21/21 tests in 104.125 seconds; API 34 passed 21/21 in 57.993 seconds**, as reported by instrumentation. Each run confirmed no active default network and disabled Wi-Fi/mobile data before and after testing. These are emulator observations, not physical-device benchmarks. Receipts: `android-device-api23-run.json`, `android-device-api34-run.json` and their corresponding final logs.
+
+Native checks include original-image detail after preview/source-file disposal, all eight EXIF orientations with four user rotations, bounded odd-edge decoding, activity recreation retaining manual drafts and pending render/save state, and actual storage failure/recovery. The eight-image synthetic photo corpus on **each** API recorded **five automatic matches and three assisted-only matches** through explicit offered corrections. It remains `accuracyBenchmark: false`; no expected expression is fed to recognition as a correction.
+
+The combined `device-final-qa.json` is **passed**, with six API 23 and seven API 34 manual observations tied to the current APK and evidence hashes. `manual-qa-input.json` retains the actual observations:
+
+- **API 23:** four 220 ms finger strokes produced `1+1 → 2`; rapid Undo/Redo restored it. A manual correction to `3+4 → 7` survived closing/reopening. An injected save obstruction produced a visible refusal without a history write; removing it and retrying saved exactly one row, which survived force-stop/restart. A fast sparse stroke erased at its midpoint, and ink remained visible/proportionate through landscape and back.
+- **API 34:** the system camera returned `12+34 → 46` offline. A manual edit to `12+35 → 47` survived reopening with its photo. A source crop that preserved the expression calculated 46 after immediate close/reopen. An earlier accidentally over-tight selection removed `34` and produced an input error; Restore original recovered 46 before the check was repeated with the full horizontal expression.
+- **Rotation accuracy limit:** a 90-degree photo rotation remained visible after reopening, but sideways OCR proposed the inaccurate `12+3 → 15` with an unsupported-layout warning. This tested rotation retention and restoration, not correct rotated OCR. Restore original recovered `12+34 → 46`.
+- **Explicit root correction and durable photo save:** the imported root fixture stayed `V16` with an unknown-name error until the offered `sqrt(16)` correction was selected; the preview then showed 4. One reviewed save added exactly one history row. Reopening Photo calculator showed that the saved draft had cleared; force-stop/restart retained row 5, `sqrt(16) = 4`.
+
+A manual attempt to interrupt an active read finished before the cancellation tap, so **no manual in-flight cancellation pass is claimed**. The unit tests passed cancellation of an active recognizer, cancellation of a queued waiter, duplicate completion, and retry after startup/native failure; the completion slot remains occupied until the native operation actually ends. Pending crop/render requests and corrections are retained in memory across tool reopening/activity recreation; this does not promise recovery of unsaved drafts after process death.
+
+### Artifact and packaged-runtime checks
+
+The current-APK static native audit passed its defined checks: four OCR libraries have 16 KB-aligned ZIP offsets; the two 64-bit libraries pass the ELF alignment/RELRO checks. The two 32-bit libraries retain 4 KB ELF alignment. The legacy `zipalign` check passed; direct inspection supplies the 16 KB ZIP-offset check. This is **not execution on a 16 KB-page runtime**. Receipt: `apk-native-alignment-v2.1.json`.
+
+The same-artifact notice audit passed: **36 APK legal files, 38 API notice files and 21 external API JARs** matched their inputs, with two project API JARs and the desugaring source archive checked. Receipt: `packaged-notice-audit-v2.1.json`.
+
+APK signature verification passed **v1 and v2** with **one Android Debug signer**. v3/v3.1/v4 and SourceStamp were not present. The META-INF/JAR-entry warnings remain in `apk-signature-final.txt`; the result is not described as warning-free or production-signed. `apk-permissions-final.txt` lists only the app-specific `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, with **no INTERNET permission**.
+
+The extracted `api-2.1.0.zip` passed **19/19 runtime smoke checks** against the archive hash above, using a 256 MiB owned JVM and the default loopback binding. Arithmetic, uncertainty, tools, schema/resource refusals and subsequent recovery passed. The owned JVM was stopped and temporary extraction removed. This was a local runtime check, not public deployment. Receipt: `api-2.1-smoke-final.json`.
+
+The release manifest and separate `release-package-v2.1-audit.json` record the committed source inventory, archive/evidence correspondence and four final artifact checksums. Consult those receipts for the distribution result; the tests above do not themselves assert archive integrity.
+
+### Limits retained
+
+Photo and ink transcription can be wrong even when the resulting expression calculates. Supported neat symbols, selected spatial powers/fractions/roots and equations remain bounded; unrestricted cursive, arbitrary pages, diagrams, natural-language word problems and a full CAS are not implemented. Offered OCR changes require explicit selection, and only reviewed saving changes history. Offline processing uses no paid API or image upload.
+
+No physical-phone, physical-stylus, TalkBack or 16 KB-page runtime test has been recorded. API 23 is the minimum target, not proof of every phone. Numerical sampling and symbolic operations retain their documented domain, precision and resource limits. The supplied APK is a development build; public API deployment and production signing remain outside this handoff.
+
 ## CalcForAll 2.0.0 — host and device acceptance passed
 
 **Status on 14 November 2026: Gate10 passed all 1,326 host tests, the full build and 19 packaged-API smoke checks. The same APK passed 14/14 device tests on each of API 23 and API 34, plus the recorded offline handwriting/camera/correction/persistence checks. Signature, packaged-notice and static native-library audits passed. Distribution/archive checks are separate and supplied by the release manifest and package-audit receipts.** Android version name is `2.0.0`, version code 5; the local API distribution is `2.0.0`. This integration started from the completed `1.3.0-preview` source. Version numbers describe this supported release scope, not completion of every feature in the historical v2/v3/v4 roadmap.

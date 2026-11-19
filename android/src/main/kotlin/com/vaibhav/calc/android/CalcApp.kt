@@ -38,11 +38,13 @@ import com.vaibhav.calc.core.tape.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 
-private data class SessionAction(val run: () -> CalcUiState, val resetStorage: Boolean = false, val persist: Boolean = true)
+private data class RecognitionSaveRequest(val text: String, val from: String)
+private data class SessionAction(val run: () -> CalcUiState, val resetStorage: Boolean = false,
+                                 val persist: Boolean = true, val recognition: RecognitionSaveRequest? = null)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalcApp() {
+fun CalcApp(workspaces: RecognitionWorkspaces) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val store = remember { SessionStore(context) }
@@ -60,22 +62,32 @@ fun CalcApp() {
     var latestSnapshot by remember { mutableStateOf<SessionSnapshot?>(null) }
     var graphEnvironment by remember { mutableStateOf(com.vaibhav.calc.core.eval.Environment()) }
     var openEdit by remember { mutableStateOf(false) }
-    var recognitionSaving by remember { mutableStateOf(false) }
+    var recognitionSaving by workspaces::saving
+    var recognitionQueued by remember { mutableStateOf(false) }
     fun act(action: () -> CalcUiState) { actions.trySend(SessionAction(action)) }
     fun saveRecognition(text: String, from: String) {
         if (recognitionSaving) return
         recognitionSaving = true
-        act {
-            try {
-                val saved = session.saveRecognition(text)
-                scope.launch {
-                    if (screen == from) {
-                        if (saved.accepted) screen = null
-                        else toolInsertionError = saved.state.notice ?: "The calculation could not be saved."
-                    }
-                }
-                saved.state
-            } finally { scope.launch { recognitionSaving = false } }
+        recognitionQueued = true
+        workspaces.saveError = null
+        if (actions.trySend(SessionAction({ session.ui }, persist = false,
+                recognition = RecognitionSaveRequest(text, from))).isFailure) {
+            recognitionSaving = false
+            recognitionQueued = false
+            workspaces.saveError = "The calculation could not be queued. Your draft is still available."
+        }
+    }
+
+    DisposableEffect(actions) {
+        onDispose {
+            // A queued action may never enter its NonCancellable transaction when the
+            // activity is recreated. Keep the draft retryable instead of leaving it locked.
+            if (recognitionQueued) {
+                recognitionQueued = false
+                workspaces.saving = false
+                workspaces.saveError = "The screen changed before saving started. Your draft is still available; review and save it again."
+            }
+            actions.close()
         }
     }
 
@@ -107,6 +119,50 @@ fun CalcApp() {
         for (action in actions) {
             busy = true
             try {
+                val recognition = action.recognition
+                if (recognition != null) {
+                    recognitionQueued = false
+                    // Finish disk commit/rollback and UI publication together even if the
+                    // composition is disposed. A recreated store invalidates this owner.
+                    withContext(NonCancellable) {
+                        var ticket: Long? = null
+                        try {
+                            if (!persistenceAllowed) {
+                                workspaces.saveError = "The saved session needs recovery before a reviewed calculation can be saved. Your draft is still available."
+                            } else {
+                                saveJob?.cancelAndJoin()
+                                val reserved = store.beginDurableWrite()
+                                ticket = reserved
+                                val result = withContext(Dispatchers.IO) {
+                                    session.saveRecognitionDurably(recognition.text, theme) { candidate ->
+                                        store.saveDurably(candidate, reserved)
+                                    }
+                                }
+                                ui = result.state
+                                if (result.accepted) {
+                                    latestSnapshot = result.snapshot!!
+                                    graphEnvironment = result.environment!!
+                                    runCatching {
+                                        if (recognition.from == "ink") workspaces.ink.clear() else workspaces.photo.clear()
+                                    }.onFailure {
+                                        // Persistence already succeeded: never offer a blind retry
+                                        // merely because an optional draft cleanup failed.
+                                        toolInsertionError = "The calculation was saved, but its draft could not be cleared. Check History before saving it again."
+                                    }
+                                    if (screen == recognition.from) screen = null
+                                } else {
+                                    workspaces.saveError = result.error ?: "The calculation could not be saved. Your draft is still available."
+                                }
+                            }
+                        } catch (problem: Exception) {
+                            workspaces.saveError = "Could not save locally: ${problem.message ?: problem.javaClass.simpleName}. Your draft is still available."
+                        } finally {
+                            ticket?.let(store::endDurableWrite)
+                            recognitionSaving = false
+                        }
+                    }
+                    continue
+                }
                 val result = withContext(Dispatchers.Default) {
                     val next = action.run()
                     Triple(next, SessionSnapshot(session.settings, next.editor, session.archive(), theme), session.snapshotEnvironment())
@@ -135,13 +191,15 @@ fun CalcApp() {
         }
     }
     val owner = LocalLifecycleOwner.current
-    val checkpoint by rememberUpdatedState(latestSnapshot)
-    val canPersist by rememberUpdatedState(persistenceAllowed)
     DisposableEffect(owner, store) {
         fun flush() {
-            val snapshot = checkpoint
-            if (canPersist && snapshot != null) {
-                try { store.save(snapshot, store.newWriteTicket()) }
+            // Read the state directly: a rememberUpdatedState value can still be one
+            // composition behind immediately after a durable transaction publishes.
+            val snapshot = latestSnapshot
+            if (persistenceAllowed && !recognitionSaving && snapshot != null) {
+                // Capture both snapshot and ticket now; acquiring a ticket later on
+                // IO could incorrectly supersede a newer reviewed calculation.
+                try { store.enqueueLifecycleSave(snapshot) }
                 catch (_: java.io.IOException) { /* The prior atomic snapshot is retained. */ }
                 catch (_: IllegalArgumentException) { /* Oversize data cannot replace a valid snapshot. */ }
             }
@@ -274,15 +332,16 @@ fun CalcApp() {
                     onHandwriting = { screen = "ink" }, onPhoto = { screen = "photo" }, onSurface = { screen = "surface" })
             }
             "graph" -> GraphScreen(session.settings, ui.entryText, graphEnvironment, onClose = { screen = null })
-            "ink" -> HandwritingScreen(session.settings, graphEnvironment, saving = recognitionSaving, onClose = { screen = null }, onUse = { saveRecognition(it, "ink") })
-            "photo" -> PhotoScreen(session.settings, graphEnvironment, saving = recognitionSaving, onClose = { screen = null }, onUse = { saveRecognition(it, "photo") })
+            "ink" -> HandwritingScreen(session.settings, graphEnvironment, workspace = workspaces.ink, saving = recognitionSaving, onClose = { if (!recognitionSaving) screen = null }, onUse = { saveRecognition(it, "ink") })
+            "photo" -> PhotoScreen(session.settings, graphEnvironment, workspace = workspaces.photo, saving = recognitionSaving, onClose = { if (!recognitionSaving) screen = null }, onUse = { saveRecognition(it, "photo") })
             "legal" -> LegalScreen(onClose = { screen = "settings" })
             "surface" -> SurfaceScreen(session.settings, onClose = { screen = null }, environment = graphEnvironment)
         }
-        toolInsertionError?.let { message ->
-            AlertDialog(onDismissRequest = { toolInsertionError = null },
-                title = { Text("Could not use result") }, text = { Text(message) },
-                confirmButton = { TextButton(onClick = { toolInsertionError = null }) { Text("OK") } })
+        (workspaces.saveError ?: toolInsertionError)?.let { message ->
+            fun dismissError() { workspaces.saveError = null; toolInsertionError = null }
+            AlertDialog(onDismissRequest = ::dismissError,
+                title = { Text(if (workspaces.saveError != null) "Calculation was not saved" else "Could not use result") }, text = { Text(message) },
+                confirmButton = { TextButton(onClick = ::dismissError) { Text("OK") } })
         }
     }
 }

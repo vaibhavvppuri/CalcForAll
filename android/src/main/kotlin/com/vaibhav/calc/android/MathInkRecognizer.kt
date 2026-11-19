@@ -38,11 +38,61 @@ object MathInkRecognizer {
         fun tiny(i: Int) = max(boxes[i].width, boxes[i].height) <= max(2f, typical * .09f)
         val bars = strokes.indices.filter(::horizontal)
 
+        fun pathLength(i: Int) = paths[i].zipWithNext().sumOf { (a, b) ->
+            hypot((b.x - a.x).toDouble(), (b.y - a.y).toDouble())
+        }
+        // Percent's two loops do not touch its slash. The diagonal and upper-left /
+        // lower-right arrangement distinguish it from ordinary baseline 0/0.
+        for (slash in strokes.indices) {
+            if (slash in isolated) continue
+            val b = boxes[slash]; val first = strokes[slash].first(); val last = strokes[slash].last()
+            if (b.height < 12f || b.width !in b.height * .25f..b.height * 1.5f ||
+                (last.x - first.x) * (last.y - first.y) >= 0f ||
+                abs(last.x - first.x) < b.width * .9f || abs(last.y - first.y) < b.height * .9f ||
+                pathLength(slash) > hypot(b.width, b.height) * 1.15f) continue
+            fun loop(i: Int): Boolean {
+                val q = boxes[i]
+                if (i == slash || i in isolated || q.width !in b.height * .1f..b.height * .6f ||
+                    q.height !in b.height * .1f..b.height * .6f || q.width !in q.height * .45f..q.height * 1.8f) return false
+                val a = strokes[i].first(); val z = strokes[i].last()
+                return hypot(a.x - z.x, a.y - z.y) <= max(2f, max(q.width, q.height) * .25f) &&
+                    pathLength(i) in max(q.width, q.height) * 2.0..max(q.width, q.height) * 4.5
+            }
+            val upper = strokes.indices.filter { i -> val q = boxes[i]
+                loop(i) && q.centerY in b.top + b.height * .05f..b.top + b.height * .42f &&
+                    q.centerX in b.left - b.height * .25f..b.centerX - b.height * .05f }
+            val lower = strokes.indices.filter { i -> val q = boxes[i]
+                loop(i) && q.centerY in b.top + b.height * .58f..b.top + b.height * .95f &&
+                    q.centerX in b.centerX + b.height * .05f..b.right + b.height * .25f }
+            if (upper.size == 1 && lower.size == 1) {
+                join(slash, upper.single()); join(slash, lower.single())
+                isolated += listOf(slash, upper.single(), lower.single()); forced[slash] = "%"
+            }
+        }
+        // Factorial's dot is directly below its stem, separated from the baseline.
+        // A normal decimal beside a digit or a dot across a fraction rule is not a bang.
+        for (stem in strokes.indices) {
+            if (stem in isolated) continue
+            val b = boxes[stem]
+            if (b.height < 12f || b.width > b.height * .18f || pathLength(stem) > b.height * 1.2f) continue
+            val dots = strokes.indices.filter { i -> val q = boxes[i]
+                i != stem && i !in isolated && tiny(i) &&
+                    abs(q.centerX - b.centerX) <= max(2f, b.height * .12f) &&
+                    q.centerY - b.bottom in b.height * .08f..b.height * .45f &&
+                    strokes.indices.none { k -> val r = boxes[k]
+                        k != stem && k != i && r.left <= b.centerX + tolerance && r.right >= b.centerX - tolerance &&
+                            r.bottom > b.bottom && r.top < q.top }
+            }
+            if (dots.size == 1) {
+                join(stem, dots.single()); isolated += listOf(stem, dots.single()); forced[stem] = "!"
+            }
+        }
+
         // Dots around a short bar form a division sign, rather than a fraction of dots.
         for (bar in bars) {
             if (bar in isolated) continue
             val b = boxes[bar]
-            val dots = strokes.indices.filter { it != bar && tiny(it) && abs(boxes[it].centerX - b.centerX) <= b.width * .18f &&
+            val dots = strokes.indices.filter { it != bar && it !in isolated && tiny(it) && abs(boxes[it].centerX - b.centerX) <= b.width * .18f &&
                 abs(boxes[it].centerY - b.centerY) in b.width * .13f..b.width * .7f }
             val above = dots.filter { boxes[it].centerY < b.centerY }
             val below = dots.filter { boxes[it].centerY > b.centerY }

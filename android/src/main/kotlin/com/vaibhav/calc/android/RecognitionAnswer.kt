@@ -16,6 +16,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+// Screen recreation must not create another lane for an unfinished calculation.
+private val recognitionCalculationLock = Mutex()
+
 /** A result is always keyed to the visible transcription, never left over from prior ink. */
 @Composable
 fun RecognitionAnswer(expression: String, settings: Settings, environment: Environment,
@@ -23,7 +26,6 @@ fun RecognitionAnswer(expression: String, settings: Settings, environment: Envir
     var preview by remember(expression, settings, environment, enabled) {
         mutableStateOf<RecognitionPreview>(if (expression.isBlank() || !enabled) RecognitionPreview.Empty else RecognitionPreview.Calculating)
     }
-    val lock = remember { Mutex() }
     val resolvedCallback by rememberUpdatedState(onResolved)
     LaunchedEffect(preview) {
         if (preview is RecognitionPreview.Answer || preview is RecognitionPreview.NeedsEdit) {
@@ -37,7 +39,7 @@ fun RecognitionAnswer(expression: String, settings: Settings, environment: Envir
         preview = try {
             // A cancelled calculation finishes before another starts; rapid edits cannot
             // pile up simultaneous expensive computations on a small phone.
-            lock.withLock { withContext(Dispatchers.Default) { RecognitionCalculator.preview(expression, settings, environment) } }
+            recognitionCalculationLock.withLock { withContext(Dispatchers.Default) { RecognitionCalculator.preview(expression, settings, environment) } }
         } catch (e: CancellationException) { throw e }
           catch (e: Exception) { RecognitionPreview.NeedsEdit(e.message ?: "This expression could not be calculated.") }
     }

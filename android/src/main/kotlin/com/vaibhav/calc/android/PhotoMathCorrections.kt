@@ -19,8 +19,16 @@ internal object PhotoMathCorrections {
             if (draft.expression.length <= MathLayout.MAX_CHARACTERS && suggestions.none { it.expression == draft.expression })
                 suggestions += PhotoMathCorrection(draft.expression, explanation)
         }
+        val supportedRoots = tokens.indices.filter { it in radicalEvidence && tokens[it].text in setOf("V", "v") }
+        // One explicit combined option solves repeated OCR misreads without a combinatorial
+        // search. Defaults remain unchanged, and every changed root has its own pixel evidence.
+        if (supportedRoots.size > 1) {
+            offer(tokens.mapIndexed { index, token ->
+                if (index in supportedRoots) token.copy(text = "√", uncertain = true) else token
+            }, "OCR may have read ${supportedRoots.size} square roots as V/v at symbols ${supportedRoots.joinToString { (it + 1).toString() }}. Choose this only if every marked symbol is √, and check each root's scope.")
+        }
         for ((index, token) in tokens.withIndex()) {
-            if (index in radicalEvidence && token.text in setOf("V", "v")) {
+            if (index in supportedRoots) {
                 val replacement = token.copy(text = "√", uncertain = true)
                 offer(tokens.toMutableList().also { it[index] = replacement },
                     "OCR read '${token.text}' at symbol ${index + 1}, but its strokes may be a square root. Choose this only if the image shows √, and check its scope.")

@@ -6,10 +6,9 @@ import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -27,37 +26,62 @@ data class PhotoMathDraft(val rawText: String, val layout: MathLayoutResult, val
 
 /** Uses the bundled on-device recognizer, then keeps the geometry for mathematical layout. */
 object PhotoMathReader {
+    private val nativeGate = NativeRecognitionGate()
+    private val completionExecutor = Executor { it.run() }
+
     suspend fun read(image: Bitmap): PhotoMathDraft {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val result = suspendCancellableCoroutine<Text> { continuation ->
-            // Close after the underlying task finishes, even if its screen was cancelled.
-            try {
-                recognizer.process(InputImage.fromBitmap(image, 0))
-                    .addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
-                    .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
-                    .addOnCompleteListener { recognizer.close() }
-            } catch (problem: Exception) { recognizer.close(); if (continuation.isActive) continuation.resumeWithException(problem) }
+        requireBoundedImage(image)
+        val result = withContext(Dispatchers.Default) {
+            nativeGate.awaitCompletion<Text> { complete ->
+                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                val closed = AtomicBoolean(false)
+                fun finish(outcome: Result<Text>) {
+                    if (!closed.compareAndSet(false, true)) return
+                    val closeFailure = runCatching { recognizer.close() }.exceptionOrNull()
+                    complete(if (closeFailure != null) Result.failure(closeFailure) else outcome)
+                }
+                try {
+                    recognizer.process(InputImage.fromBitmap(image, 0))
+                        .addOnCompleteListener(completionExecutor) { task ->
+                            finish(runCatching {
+                                if (!task.isSuccessful) throw task.exception ?: IllegalStateException("Recognition did not complete.")
+                                task.result
+                            })
+                        }
+                } catch (problem: Throwable) { finish(Result.failure(problem)) }
+            }
         }
         return withContext(Dispatchers.Default) {
-            var missingGeometry = false
-            val tokens = result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.flatMap { element ->
-                val symbols = element.symbols.takeIf { all -> all.isNotEmpty() && all.all { it.boundingBox != null } }?.map { symbol -> symbol.boundingBox!!.let { b ->
-                    MathToken(symbol.text, MathBox(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat()))
-                } }
-                if (symbols != null) symbols else listOfNotNull(element.boundingBox?.let { b ->
-                    MathToken(element.text, MathBox(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat()))
-                }.also { if (it == null && element.text.isNotBlank()) missingGeometry = true })
+            if (result.text.length > CalcSession.MAX_ENTRY_CHARS) return@withContext PhotoMathDraft(
+                result.text.take(CalcSession.MAX_ENTRY_CHARS),
+                MathLayoutResult.Rejected("This page contains too much text. Crop one expression."), truncated = true)
+            fun box(b: android.graphics.Rect?) = b?.let {
+                MathBox(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat())
             }
-            val full = if (tokens.size <= MathLayout.MAX_TOKENS) tokens + missingRules(image, tokens) else tokens
-            val layout = if (missingGeometry) MathLayoutResult.Rejected("Some symbol positions are missing. Review the raw text or crop the expression.") else MathLayout.read(full)
-            val truncated = result.text.length > CalcSession.MAX_ENTRY_CHARS
-            val corrections = if (truncated || missingGeometry) emptyList() else suggestCorrections(image, full)
-            PhotoMathDraft(result.text.take(CalcSession.MAX_ENTRY_CHARS), layout, truncated, corrections)
+            val adapted = PhotoOcrTokenAdapter.collect(result.textBlocks.asSequence().flatMap { it.lines.asSequence() }
+                .flatMap { it.elements.asSequence() }.map { element ->
+                    PhotoOcrElement(element.text, box(element.boundingBox),
+                        element.symbols.asSequence().take(MathLayout.MAX_TOKENS + 1)
+                            .map { PhotoOcrSymbol(it.text, box(it.boundingBox)) }.toList())
+                })
+            if (adapted.budgetExceeded) return@withContext PhotoMathDraft(result.text,
+                MathLayoutResult.Rejected("This image has too many symbols. Crop one expression before interpreting its layout."))
+            val tokens = adapted.tokens
+            val full = if (adapted.missingGeometry) tokens else tokens + missingRules(image, tokens)
+            var layout = if (adapted.missingGeometry)
+                MathLayoutResult.Rejected("Some symbol positions are missing. Review the raw text or crop the expression.")
+                else MathLayout.read(full)
+            if (adapted.usedElementFallback && layout is MathLayoutResult.Draft) layout = layout.copy(
+                warnings = layout.warnings + "Some OCR text was kept as a whole block because individual symbol positions were incomplete. Check its layout.",
+                ambiguous = true)
+            val corrections = if (adapted.missingGeometry) emptyList() else suggestCorrections(image, full)
+            PhotoMathDraft(result.text, layout, corrections = corrections)
         }
     }
 
     /** These candidates remain separate from the default transcription until the user selects one. */
     internal fun suggestCorrections(image: Bitmap, tokens: List<MathToken>): List<PhotoMathCorrection> {
+        requireBoundedImage(image)
         if (tokens.size > MathLayout.MAX_TOKENS) return emptyList()
         val roots = mutableSetOf<Int>()
         for ((index, token) in tokens.withIndex().filter { it.value.text in setOf("V", "v") }.take(8)) {
@@ -79,6 +103,7 @@ object PhotoMathReader {
     /** Heuristic recovery of a printed rule omitted by OCR. Glyphs on both sides narrow
      * the candidates, but page rules can still be mistaken for fraction bars: mark uncertain. */
     internal fun missingRules(image: Bitmap, tokens: List<MathToken>): List<MathToken> {
+        requireBoundedImage(image)
         if (tokens.isEmpty() || tokens.size > MathLayout.MAX_TOKENS) return emptyList()
         val heights = tokens.map { it.bounds.height }.filter { it >= 4f }.sorted()
         val height = heights.getOrNull(heights.size / 2) ?: return emptyList()
@@ -122,5 +147,11 @@ object PhotoMathReader {
                 q.centerX in b.left..b.right && q.bottom < b.top && b.top - q.bottom < height * 2.5f }
             b.height <= max(2f, height * .18f) && clear && (root != null || above)
         }.take(MathLayout.MAX_TOKENS - tokens.size + 1).map { MathToken("-", it, uncertain = true) }
+    }
+
+    private fun requireBoundedImage(image: Bitmap) {
+        require(!image.isRecycled && image.width in 1..PhotoCropGeometry.MAX_EDGE && image.height in 1..PhotoCropGeometry.MAX_EDGE) {
+            "Read a decoded image or crop with edges no larger than ${PhotoCropGeometry.MAX_EDGE} pixels."
+        }
     }
 }

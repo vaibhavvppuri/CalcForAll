@@ -3,6 +3,7 @@ package com.vaibhav.calc.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.ViewModelProvider
 
 /**
  * M7-1: the Compose shell. The activity is deliberately empty of logic — state
@@ -13,6 +14,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { CalcApp() }
+        val recognition = ViewModelProvider(this)[RecognitionWorkspaces::class.java]
+        setContent { CalcApp(recognition) }
     }
 }

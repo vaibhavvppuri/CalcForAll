@@ -1,6 +1,6 @@
 # CalcForAll privacy policy
 
-Updated 13 November 2026. This policy describes the CalcForAll 2.0 source configuration and its optional local server.
+Updated 14 November 2026. This policy describes the CalcForAll 2.1 source configuration and its optional local server.
 
 ## Calculations and local storage
 
@@ -14,9 +14,11 @@ Copying an expression or result places it on Android's system clipboard. Android
 
 The handwriting pad processes finger/stylus strokes and geometric symbol candidates in the app. Strokes and candidate shapes are not uploaded. Recognized expressions are calculated in a private preview context; they do not change history or memory registers until you choose **Save reviewed calculation**. The reviewed expression then becomes ordinary saved calculator input. The app does not persist the original ink strokes.
 
-Photo recognition reads an image you select through Android's image picker or take using **Take photo**. Taking a photo opens your device's camera app and grants it temporary access to one file in CalcForAll's private capture cache through Android FileProvider. CalcForAll does not request broad photo-library access or the camera, microphone, contacts, or location permissions. A captured file is deleted after decoding or cancellation; abandoned captures older than one day are cleaned up when another capture is started. Android may also clear this cache. A camera or document-provider app may itself save a copy or use a cloud service; those apps are separate from CalcForAll.
+Photo recognition reads an image you select through Android's image picker or take using **Take photo**. Taking a photo opens your device's camera app and grants it temporary access to one file in CalcForAll's private capture cache through Android FileProvider. CalcForAll does not request broad photo-library access or the camera, microphone, contacts, or location permissions. A captured file is deleted after reading or cancellation; abandoned captures older than one day are cleaned up when another capture is started. Android may also clear this cache. A camera or document-provider app may itself save a copy or use a cloud service; those apps are separate from CalcForAll.
 
-The selected image, crop and orientation changes are processed on-device and held in memory for the screen. The app does not add images to calculation history. A visible, editable transcription feeds an automatic calculation preview. Only an explicitly saved reviewed calculation enters history. Closing the screen discards its in-memory image; clearing Android app data or uninstalling also removes private capture files.
+The selected image's encoded bytes, crop, orientation, ink strokes and editable recognition drafts are held in application memory. They survive closing and reopening a recognition tool and Android activity recreation while the app process remains alive. **Clear photo**, **Clear draft**, a successful reviewed save, or ending the app process releases the corresponding draft. Drafts are not written to saved calculation history and do not survive an app restart. Cropping decodes the selected region from the original image to retain detail; images over the documented size limits are refused. Clearing Android app data or uninstalling also removes private capture files.
+
+A visible, editable transcription feeds an automatic calculation preview. **Save reviewed calculation** reports success only after the calculator snapshot is written and read back locally. A bounded rollback journal protects the previous snapshot during that operation; it contains ordinary saved calculator inputs and settings, never the image or ink. A failed save keeps the recognition draft available and reports the storage problem.
 
 Photo recognition uses Google's **bundled ML Kit Latin text-recognition SDK and model**. The model is supplied with the application, so the feature does not need a first-use model download. Google's documentation states that image/text inputs and recognition outputs are processed on-device and are not sent to Google. See [ML Kit's terms and privacy information](https://developers.google.com/ml-kit/terms) and its [bundled-model documentation](https://developers.google.com/ml-kit/vision/text-recognition/v2/android).
 

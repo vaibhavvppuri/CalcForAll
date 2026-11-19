@@ -1,10 +1,10 @@
-# Public Version 1.2
+# Public Version 1.3
 
-This historical development release is publicly labelled Version 1.2. Its unchanged APK, API and source embed the earlier internal name `2.0.0`; that embedded name does not designate the reserved final Version 2.0 milestone. Original tested source commit: `f38a2acec6fe75fcb7420666cfa61f9747f25596`.
+This historical development release is publicly labelled Version 1.3. Its unchanged APK, API and source embed the earlier internal name `2.1.0`; that embedded name does not designate the reserved final Version 2.0 milestone. Original tested source commit: `6e82146d95621e834c9c0b959385f490c8f8f3a9`.
 
-Download the development-signed Android APK, optional local API, complete source and historical verification evidence from [Version 1.2](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.2).
+Download the development-signed Android APK, optional local API, complete source and historical verification evidence from [Version 1.3](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.3).
 
-This version adds automatic answers for photo and handwriting input, bounded grouping of powers, fractions and roots, explicit recognition corrections and numerical uncertainty safeguards. Review the recognized expression and answer. Poor photographs, connected handwriting and unsupported mathematical layouts can still require correction or typed input.
+This version improves photo crops using original-image detail, retains photo and handwriting drafts across tool reopening and activity recreation, improves stroke erasing and adds verified persistence with safe retry for reviewed saves. Unsaved drafts remain memory-only and do not survive process death. Review the recognized expression and answer. Poor photographs, connected handwriting and unsupported mathematical layouts can still require correction or typed input.
 
 The public source archive is byte-identical to the historical source archive. Every tracked source file and build input retains the original Git identity. The APK and API also remain byte-identical to the tested originals. Release assets include PUBLICATION.json mapping all original/public archive members and hashes, and public-verification.json describing the historical checks and publication audit. Evidence-only privacy changes are documented there.
 

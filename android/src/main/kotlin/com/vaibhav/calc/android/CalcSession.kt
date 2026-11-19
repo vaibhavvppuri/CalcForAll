@@ -31,6 +31,15 @@ data class CalcUiState(
 /** A rejected replacement leaves the prior expression intact and exposes its reason. */
 data class TextReplacement(val accepted: Boolean, val state: CalcUiState)
 
+/** Persistence refusal is separate from the original UI/undo state, which remains untouched. */
+data class DurableRecognitionSave(
+    val accepted: Boolean,
+    val state: CalcUiState,
+    val error: String? = null,
+    val snapshot: SessionSnapshot? = null,
+    val environment: Environment? = null,
+)
+
 /** UI events use the structural editor and transactional tape. Calls are serialized by the UI. */
 class CalcSession(private val calculator: Calculator = Calculator()) {
     private val tape = Tape(calculator.settings)
@@ -84,6 +93,48 @@ class CalcSession(private val calculator: Calculator = Calculator()) {
             // Tape validates/recomputes before changing its state. Restore the editor too
             // when that pre-transaction validation refuses a full/exhausted history.
             failed(problem.message ?: "The reviewed calculation could not be saved.")
+        }
+    }
+
+    /**
+     * The caller serializes session actions and runs this off the main thread. A successful
+     * callback means the candidate snapshot was durably written; only then may its UI be
+     * published. Any refusal restores every in-memory transaction field, including IDs.
+     */
+    fun saveRecognitionDurably(
+        text: String,
+        theme: String = "SYSTEM",
+        persist: (SessionSnapshot) -> Unit,
+    ): DurableRecognitionSave {
+        val previousUi = ui
+        val previousTape = tape.checkpoint()
+        val previousUndo = undoEdits.toList()
+        val previousRedo = redoEdits.toList()
+        val previousNoticeUndo = undoNotice
+        val previousValue = lastValue
+        val previousOutcome = lastOutcome
+        fun rollback(message: String): DurableRecognitionSave {
+            tape.restore(previousTape)
+            ui = previousUi
+            undoEdits.clear(); undoEdits.addAll(previousUndo)
+            redoEdits.clear(); redoEdits.addAll(previousRedo)
+            undoNotice = previousNoticeUndo
+            lastValue = previousValue
+            lastOutcome = previousOutcome
+            return DurableRecognitionSave(false, ui, message)
+        }
+        return try {
+            val candidate = saveRecognition(text)
+            if (!candidate.accepted) {
+                rollback(candidate.state.notice ?: candidate.state.error ?: "The reviewed calculation could not be saved.")
+            } else {
+                val snapshot = SessionSnapshot(settings, ui.editor, archive(), theme)
+                val environment = snapshotEnvironment()
+                persist(snapshot)
+                DurableRecognitionSave(true, ui, snapshot = snapshot, environment = environment)
+            }
+        } catch (problem: Exception) {
+            rollback("Could not save locally: ${problem.message ?: problem.javaClass.simpleName}. Your draft is still available; retry when storage is available.")
         }
     }
 
