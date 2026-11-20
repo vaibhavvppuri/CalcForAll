@@ -13,16 +13,22 @@ object InkRecognizer {
     private val templates: List<Pair<String, List<List<InkPoint>>>> = listOf(
         "0" to listOf(curve(.5f, .5f, .35f, .5f)),
         "1" to listOf(stroke(.5f, 0f, .5f, 1f)),
+        "1" to listOf(stroke(.2f, .22f, .5f, 0f, .5f, 1f)),
         "1" to listOf(stroke(.25f, .2f, .5f, 0f, .5f, 1f), stroke(.2f, 1f, .8f, 1f)),
         "2" to listOf(stroke(0f, .2f, .15f, .05f, .5f, 0f, .85f, .1f, 1f, .3f, .85f, .5f, 0f, 1f, 1f, 1f)),
         "3" to listOf(stroke(0f, .1f, .4f, 0f, .8f, .1f, 1f, .25f, .8f, .4f, .35f, .5f, .8f, .55f, 1f, .75f, .8f, .95f, .4f, 1f, 0f, .9f)),
         "4" to listOf(stroke(.8f, 0f, 0f, .65f, 1f, .65f), stroke(.8f, .1f, .8f, 1f)),
         "4" to listOf(stroke(.1f, 0f, .1f, .6f, .9f, .6f), stroke(.8f, 0f, .8f, 1f)),
         "5" to listOf(stroke(1f, 0f, .1f, 0f, .1f, .45f, .6f, .4f, .9f, .55f, 1f, .75f, .8f, .95f, .3f, 1f, 0f, .85f)),
+        "5" to listOf(stroke(.1f, .1f, .1f, .45f, .6f, .4f, .9f, .55f, 1f, .75f, .8f, .95f, .3f, 1f, 0f, .85f), stroke(.1f, 0f, 1f, 0f)),
         "6" to listOf(stroke(.9f, .05f, .6f, 0f, .2f, .25f, 0f, .65f, .15f, .9f, .5f, 1f, .85f, .9f, 1f, .65f, .8f, .45f, .4f, .4f, .05f, .6f)),
         "7" to listOf(stroke(0f, 0f, 1f, 0f, .3f, 1f)),
+        "7" to listOf(stroke(0f, 0f, 1f, 0f), stroke(.96f, .1f, .3f, 1f)),
         "7" to listOf(stroke(0f, 0f, 1f, 0f, .3f, 1f), stroke(.2f, .5f, .8f, .5f)),
+        "7" to listOf(stroke(0f, 0f, 1f, 0f), stroke(.96f, .1f, .3f, 1f), stroke(.2f, .5f, .8f, .5f)),
         "8" to listOf(curve(.5f, .25f, .35f, .25f), curve(.5f, .75f, .45f, .25f)),
+        "8" to listOf((0..72).map { i -> val a = 2f * PI.toFloat() * i / 72f
+            InkPoint(.5f + .4f * sin(2f * a), .5f - .5f * cos(a)) }),
         "9" to listOf(curve(.5f, .3f, .4f, .3f), stroke(.9f, .25f, .85f, .65f, .65f, .95f, .2f, 1f)),
         "+" to listOf(stroke(0f, .5f, 1f, .5f), stroke(.5f, 0f, .5f, 1f)),
         "−" to listOf(stroke(0f, .5f, 1f, .5f)),
@@ -42,6 +48,51 @@ object InkRecognizer {
         "^" to listOf(stroke(0f, .7f, .5f, 0f, 1f, .7f)),
     )
     private val normalized by lazy { templates.map { (label, paths) -> Triple(label, normalize(paths), paths.size) } }
+
+    /**
+     * A detached cap is admitted only with the endpoint/topology of a five or seven.
+     * This is not a generic "nearby bar" merge: a fraction rule, overline, minus,
+     * or a bar over a vertical one must remain available to the layout reader.
+     * The caller has already enforced the total drawing's coordinate/work bounds.
+     */
+    internal fun detachedTopDigit(cap: List<InkPoint>, body: List<List<InkPoint>>): InkCandidate? {
+        if (cap.size < 2 || body.isEmpty() || body.size > 2 || body.any { it.size < 2 }) return null
+        fun length(path: List<InkPoint>) = path.zipWithNext().sumOf { (a, b) ->
+            hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble())
+        }
+        val all = body.flatten()
+        val left = all.minOf { it.x }; val right = all.maxOf { it.x }
+        val top = all.minOf { it.y }; val bottom = all.maxOf { it.y }
+        val height = bottom - top; val width = right - left
+        val capLeft = cap.minOf { it.x }; val capRight = cap.maxOf { it.x }
+        val capTop = cap.minOf { it.y }; val capBottom = cap.maxOf { it.y }
+        val capWidth = capRight - capLeft
+        if (height < 12f || width !in height * .25f..height * 1.5f ||
+            capWidth !in height * .35f..height * 1.5f || capBottom - capTop > capWidth * .12f ||
+            top - capBottom !in 0f..height * .18f || length(cap) > capWidth * 1.2f ||
+            left < capLeft - height * .15f || right > capRight + height * .15f) return null
+        val main = body.maxBy { path -> path.maxOf { it.y } - path.minOf { it.y } }
+        val oriented = if (main.first().y <= main.last().y) main else main.reversed()
+        val start = oriented.first(); val end = oriented.last()
+        if (start.y > top + height * .08f || end.y < bottom - height * .18f) return null
+        val possibleSeven = abs(start.x - capRight) <= capWidth * .2f &&
+            start.x - end.x >= width * .8f && end.y - start.y >= height * .85f &&
+            length(main) <= hypot(width, height) * 1.15f &&
+            body.filter { it !== main }.all { path ->
+                val y = path.map { it.y }.average().toFloat()
+                val w = path.maxOf { it.x } - path.minOf { it.x }
+                path.maxOf { it.y } - path.minOf { it.y } <= height * .1f &&
+                    w in height * .2f..height * .85f && y in top + height * .25f..top + height * .7f
+            }
+        val shoulder = oriented.firstOrNull { it.y >= top + height * .25f }
+        val possibleFive = body.size == 1 && abs(start.x - capLeft) <= capWidth * .22f &&
+            length(main) >= height * 1.6f && shoulder != null &&
+            abs(shoulder.x - start.x) <= height * .18f && shoulder.y <= top + height * .65f
+        if (!possibleFive && !possibleSeven) return null
+        val best = recognize(listOf(cap) + body).firstOrNull() ?: return null
+        return best.takeIf { it.distance <= .075f &&
+            ((it.symbol == "5" && possibleFive) || (it.symbol == "7" && possibleSeven)) }
+    }
 
     fun recognize(strokes: List<List<InkPoint>>): List<InkCandidate> {
         // Refuse oversized input before flattening or visiting individual points.

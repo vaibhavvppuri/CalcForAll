@@ -1,6 +1,6 @@
 # CalcForAll privacy policy
 
-Updated 14 November 2026. This policy describes the CalcForAll 2.1 source configuration and its optional local server.
+Updated 14 November 2026. This policy describes the CalcForAll 2.2 source configuration and its optional local server.
 
 ## Calculations and local storage
 
@@ -16,13 +16,15 @@ The handwriting pad processes finger/stylus strokes and geometric symbol candida
 
 Photo recognition reads an image you select through Android's image picker or take using **Take photo**. Taking a photo opens your device's camera app and grants it temporary access to one file in CalcForAll's private capture cache through Android FileProvider. CalcForAll does not request broad photo-library access or the camera, microphone, contacts, or location permissions. A captured file is deleted after reading or cancellation; abandoned captures older than one day are cleaned up when another capture is started. Android may also clear this cache. A camera or document-provider app may itself save a copy or use a cloud service; those apps are separate from CalcForAll.
 
-The selected image's encoded bytes, crop, orientation, ink strokes and editable recognition drafts are held in application memory. They survive closing and reopening a recognition tool and Android activity recreation while the app process remains alive. **Clear photo**, **Clear draft**, a successful reviewed save, or ending the app process releases the corresponding draft. Drafts are not written to saved calculation history and do not survive an app restart. Cropping decodes the selected region from the original image to retain detail; images over the documented size limits are refused. Clearing Android app data or uninstalling also removes private capture files.
+The selected image's encoded bytes, crop, orientation, image treatment, bounded ink undo/redo history and editable recognition drafts are held in application memory. They survive closing and reopening a recognition tool and Android activity recreation while the app process remains alive. **Clear photo**, **Clear draft**, a successful reviewed save, or ending the app process releases the corresponding draft. Drafts are not written to saved calculation history and do not survive an app restart. Contrast and orientation assistance run on the device and show the transformed image before review. A failed replacement import keeps the previous draft. Cropping decodes the selected region from the original image to retain detail; images over the documented size limits are refused. Clearing Android app data or uninstalling also removes private capture files.
 
 A visible, editable transcription feeds an automatic calculation preview. **Save reviewed calculation** reports success only after the calculator snapshot is written and read back locally. A bounded rollback journal protects the previous snapshot during that operation; it contains ordinary saved calculator inputs and settings, never the image or ink. A failed save keeps the recognition draft available and reports the storage problem.
 
 Photo recognition uses Google's **bundled ML Kit Latin text-recognition SDK and model**. The model is supplied with the application, so the feature does not need a first-use model download. Google's documentation states that image/text inputs and recognition outputs are processed on-device and are not sent to Google. See [ML Kit's terms and privacy information](https://developers.google.com/ml-kit/terms) and its [bundled-model documentation](https://developers.google.com/ml-kit/vision/text-recognition/v2/android).
 
 Google's general ML Kit terms also describe SDK performance/utilization metrics and possible update contacts. This app removes the Android `INTERNET` and `ACCESS_NETWORK_STATE` permissions and contains no application code that uploads an image or calls a cloud calculation service. That prevents direct internet access by the app under Android's permission model. This statement is not a claim that every behavior of Android, Google Play services, the device manufacturer, or a chosen document provider has been independently audited. Google's SDK remains subject to [Google's Privacy Policy](https://policies.google.com/privacy) and its own terms. If a future build changes network permissions, SDKs or data handling, this policy must be reviewed before distribution.
+
+Developers can explicitly enable the local Android `CalcPhoto` debug log for recognition timing. It records image dimensions, rotation numbers, processing stages and elapsed times; it does not record image pixels, recognized text, paths, URIs or exception messages. This diagnostic is disabled by default and is not uploaded by the app.
 
 ## Optional local API
 

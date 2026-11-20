@@ -51,38 +51,55 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
     var crop by workspace::crop
     var cropX by workspace::cropX
     var cropY by workspace::cropY
+    var orientationOptions by remember { mutableStateOf<List<PhotoOrientationOption>>(emptyList()) }
+    var orientationImage by remember { mutableStateOf<Bitmap?>(null) }
+    var searchingOrientations by remember { mutableStateOf(false) }
+    var orientationPass by remember { mutableIntStateOf(1) }
 
-    fun start(capturePath: String? = null, imageOperation: suspend () -> Bitmap) {
+    fun applyDraft(draft: PhotoMathDraft) {
+        recognizedText = draft.completeRawText
+        text = draft.expressionForReview
+        corrections = if (draft.truncated || draft.incomplete) emptyList() else draft.corrections
+        warnings = when (val layout = draft.layout) {
+            is MathLayoutResult.Draft -> layout.warnings
+            is MathLayoutResult.Rejected -> listOf(layout.reason)
+        }
+        if (draft.rawText.isBlank()) error = "No text was found. Use a closer, sharper image with good lighting."
+        if (draft.truncated) error = "This page contains too much text. Crop one expression before calculating."
+        if (draft.incomplete) error = "The image could not be transcribed completely. Crop one expression or enter it below."
+        workspace.needsRead = false
+    }
+    fun start(capturePath: String? = null, replacing: Boolean = false,
+              draftOverride: PhotoMathDraft? = null, publish: () -> Unit = {},
+              imageOperation: suspend () -> Bitmap) {
         job?.cancel()
         val ticket = ++revision
-        busy = true; error = null; text = ""; recognizedText = ""; warnings = emptyList(); editRejected = false
-        corrections = emptyList(); workspace.needsRead = true
-        scrollAfterRead = true
+        busy = true; searchingOrientations = false; error = null
+        orientationOptions = emptyList(); orientationImage = null
+        // Keep the previous image and corrected text until decoding succeeds.
+        // New imports are not resumable until their private source has been read.
+        val previousNeedsRead = workspace.needsRead
+        if (!replacing) workspace.needsRead = true
         job = scope.launch {
+            var published = false
             try {
-                val image = imageOperation()
-                ensureActive()
-                if (ticket != revision) return@launch
-                bitmap = image
-                val draft = withTimeout(45_000) { PhotoMathReader.read(image) }
-                if (ticket == revision) {
-                    recognizedText = draft.completeRawText
-                    text = draft.expressionForReview
-                    corrections = draft.corrections
-                    when (val layout = draft.layout) {
-                        is MathLayoutResult.Draft -> { warnings = layout.warnings }
-                        is MathLayoutResult.Rejected -> {
-                            warnings = listOf(layout.reason)
-                        }
-                    }
-                    if (draft.rawText.isBlank()) error = "No text was found. Use a closer, sharper image with good lighting."
-                    if (draft.truncated) { text = ""; error = "This page contains too much text. Crop one expression before calculating." }
-                    workspace.needsRead = false
-                }
+                val image = PhotoStaging.prepare(ticket, { revision }, imageOperation) { prepared ->
+                    publish()
+                    bitmap = prepared
+                    text = ""; recognizedText = ""; warnings = emptyList(); corrections = emptyList(); editRejected = false
+                    workspace.needsRead = true; published = true; scrollAfterRead = true
+                } ?: return@launch
+                val draft = draftOverride ?: withTimeout(45_000) { PhotoMathReader.read(image) }
+                if (ticket == revision) applyDraft(draft)
             } catch (_: TimeoutCancellationException) {
                 if (ticket == revision) { error = "Reading took too long. Crop a smaller expression or enter it below."; workspace.needsRead = false }
             } catch (e: CancellationException) { throw e }
-              catch (e: Exception) { if (ticket == revision) { error = "Could not read this image: ${e.message ?: "recognition unavailable"}"; workspace.needsRead = false; workspace.pendingRender = null } }
+              catch (e: Exception) { if (ticket == revision) {
+                  error = if (published) "Could not read this image: ${e.message ?: "recognition unavailable"}"
+                      else "Could not open this image. Your previous draft is still here. ${e.message ?: "Try another image."}"
+                  workspace.needsRead = if (published) false else previousNeedsRead
+                  workspace.pendingRender = null
+              } }
             finally {
                 if (ticket == revision) busy = false
                 capturePath?.let { path -> withContext(NonCancellable + Dispatchers.IO) { runCatching { PhotoInput.discardCapture(context, path) } } }
@@ -90,32 +107,82 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
         }
     }
     fun read(image: Bitmap) { workspace.pendingRender = null; start { image } }
-    fun render(region: PhotoRegion, turns: Int) {
+    fun render(region: PhotoRegion, turns: Int, treatment: PhotoImageTreatment = workspace.treatment) {
         val source = workspace.source ?: return
-        workspace.pendingRender = PhotoRenderRequest(region, turns)
-        start {
-            val image = withContext(Dispatchers.IO) { source.crop(region, turns) }
-            workspace.region = region; workspace.quarterTurns = PhotoCropGeometry.turns(turns); crop = false; workspace.pendingRender = null
-            image
+        workspace.pendingRender = PhotoRenderRequest(region, turns, treatment)
+        start(publish = {
+            workspace.region = region; workspace.quarterTurns = PhotoCropGeometry.turns(turns)
+            workspace.treatment = treatment; crop = false; workspace.pendingRender = null
+        }) {
+            withContext(Dispatchers.IO) {
+                val decoded = source.crop(region, turns)
+                try { PhotoImageAssist.apply(decoded, treatment).also { if (it !== decoded) decoded.recycle() } }
+                catch (problem: Throwable) { decoded.recycle(); throw problem }
+            }
         }
     }
     fun load(uri: Uri, capturePath: String? = null) {
-        job?.cancel()
-        workspace.clear()
-        start(capturePath) {
-            val source = withContext(Dispatchers.IO) { PhotoInput.open(context, uri) }
-            workspace.source = source
-            withContext(Dispatchers.IO) { source.preview() }
+        var stagedSource: PhotoSource? = null
+        start(capturePath, replacing = true, publish = {
+            workspace.source = stagedSource
+            workspace.region = PhotoRegion.FULL; workspace.quarterTurns = 0
+            workspace.treatment = PhotoImageTreatment.ORIGINAL; workspace.pendingRender = null
+            crop = false; cropX = 0f..1f; cropY = 0f..1f
+        }) {
+            withContext(Dispatchers.IO) {
+                PhotoInput.open(context, uri).let { source -> source.preview().also { stagedSource = source } }
+            }
         }
     }
+    fun searchOrientations(image: Bitmap) {
+        job?.cancel()
+        val ticket = ++revision
+        busy = true; searchingOrientations = true; orientationPass = 1; error = null
+        orientationOptions = emptyList(); orientationImage = null
+        job = scope.launch {
+            try {
+                val options = withTimeout(45_000) {
+                    PhotoMathReader.orientationAlternatives(image,
+                        onTurnStarted = { orientationPass = it },
+                        onOptionsReady = { completed -> if (ticket == revision) {
+                            orientationImage = image; orientationOptions = completed
+                        } })
+                }
+                if (ticket == revision) {
+                    orientationImage = image; orientationOptions = options
+                    if (options.isEmpty()) error = "No complete text was found at other orientations. Crop the expression or edit it below."
+                }
+            } catch (_: TimeoutCancellationException) {
+                if (ticket == revision) error = if (orientationOptions.isNotEmpty())
+                    "The orientation search reached its time limit. Completed choices are kept below; remaining orientations were not finished. Your current draft is unchanged."
+                else "The orientation search took too long. Your current draft is unchanged; try rotating the image manually."
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) { if (ticket == revision) error = "Could not finish the orientation search. Your current draft is unchanged. ${e.message ?: "Try a smaller image."}" }
+            finally { if (ticket == revision) { busy = false; searchingOrientations = false } }
+        }
+    }
+    fun chooseOrientation(option: PhotoOrientationOption) {
+        val image = orientationImage ?: return
+        var region = workspace.region
+        repeat(option.turns) { region = region.rotateClockwise() }
+        val turns = PhotoCropGeometry.turns(workspace.quarterTurns + option.turns)
+        workspace.pendingRender = PhotoRenderRequest(region, turns, workspace.treatment)
+        start(draftOverride = option.draft, publish = {
+            workspace.region = region; workspace.quarterTurns = turns; crop = false; workspace.pendingRender = null
+        }) { withContext(Dispatchers.Default) { PhotoImageAssist.apply(image, quarterTurns = option.turns) } }
+    }
     fun cancelReading() {
+        val wasOrientationSearch = searchingOrientations
         revision++; job?.cancel(); busy = false; workspace.needsRead = false; workspace.pendingRender = null
-        error = "Reading cancelled. Crop the image, read it again, or enter the expression below."
+        searchingOrientations = false
+        error = if (wasOrientationSearch && orientationOptions.isNotEmpty())
+            "Orientation search cancelled. Completed choices are kept below; remaining orientations were not finished. Your current draft is unchanged."
+        else "Reading cancelled. Your current image and draft are kept; review them or read again."
     }
     LaunchedEffect(workspace) {
         if (workspace.needsRead) {
             val pending = workspace.pendingRender
-            if (pending != null) render(pending.region, pending.quarterTurns)
+            if (pending != null) render(pending.region, pending.quarterTurns, pending.treatment)
             else bitmap?.let(::read) ?: workspace.source?.let { render(workspace.region, workspace.quarterTurns) }
         }
     }
@@ -141,7 +208,7 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
             Text("Use clear printed math. Check signs, powers and fractions before saving.", fontSize = 12.sp, lineHeight = 18.sp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Your draft stays here until cleared, saved, or the app restarts.", modifier = Modifier.weight(1f), fontSize = 12.sp, lineHeight = 18.sp)
-                TextButton(enabled = !saving && pendingCapture == null, onClick = { job?.cancel(); workspace.clear(); busy = false }) { Text("Clear photo") }
+                TextButton(enabled = !saving && pendingCapture == null, onClick = { job?.cancel(); workspace.clear(); busy = false; searchingOrientations = false; orientationOptions = emptyList(); orientationImage = null }) { Text("Clear photo") }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = !saving && !busy && pendingCapture == null, modifier = Modifier.weight(1f), onClick = {
@@ -176,6 +243,27 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                     TextButton(enabled = !busy && !saving, onClick = { crop = !crop; cropX = 0f..1f; cropY = 0f..1f }) { Text(if (crop) "Cancel crop" else "Crop expression") }
                     TextButton(enabled = !busy && !saving, onClick = { read(image) }) { Text("Read again") }
                 }
+                Text("Image treatment · changes the preview before reading", fontSize = 12.sp, lineHeight = 18.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(PhotoImageTreatment.ORIGINAL to "Original", PhotoImageTreatment.CONTRAST to "Boost contrast",
+                        PhotoImageTreatment.INVERT_CONTRAST to "Light text on dark").forEach { (treatment, label) ->
+                        FilterChip(workspace.treatment == treatment, enabled = !busy && !saving && !crop,
+                            onClick = { if (workspace.treatment != treatment) render(workspace.region, workspace.quarterTurns, treatment) }, label = { Text(label) })
+                    }
+                }
+                TextButton(enabled = !busy && !saving && !crop, onClick = { searchOrientations(image) }) { Text("Try other orientations") }
+                if (orientationOptions.isNotEmpty()) {
+                    Text("Choose an orientation after checking its text. You can choose a completed option while the remaining rotations are still being read.", fontSize = 12.sp, lineHeight = 18.sp)
+                    orientationOptions.forEach { option ->
+                        OutlinedButton(enabled = !saving && (!busy || searchingOrientations), modifier = Modifier.fillMaxWidth(), onClick = { chooseOrientation(option) }) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text("Rotate ${option.turns * 90}° clockwise")
+                                Text(option.draft.expressionForReview.ifBlank { option.draft.completeRawText }, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                if (option.draft.expressionForReview.isBlank()) Text("Layout needs manual review", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
                 if (crop) {
                     Text("Crop from the original-resolution photo. Include the whole expression, including fraction bars and powers.", fontSize = 12.sp, lineHeight = 18.sp)
                     Text("Left / right edges", fontSize = 12.sp, lineHeight = 18.sp)
@@ -187,11 +275,14 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                         render(workspace.region.subregion(selected), workspace.quarterTurns)
                     }) { Text("Read cropped expression") }
                 }
-                if (workspace.region != PhotoRegion.FULL || workspace.quarterTurns != 0)
-                    TextButton(enabled = !busy && !saving, onClick = { render(PhotoRegion.FULL, 0) }) { Text("Restore original image") }
+                if (workspace.region != PhotoRegion.FULL || workspace.quarterTurns != 0 || workspace.treatment != PhotoImageTreatment.ORIGINAL)
+                    TextButton(enabled = !busy && !saving, onClick = { render(PhotoRegion.FULL, 0, PhotoImageTreatment.ORIGINAL) }) { Text("Restore original image") }
             }
             if (busy) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (searchingOrientations) {
+                    LinearProgressIndicator(progress = { (orientationPass - 1) / 3f }, modifier = Modifier.fillMaxWidth())
+                    Text("Reading orientation $orientationPass of 3 offline. The current draft stays unchanged until you choose one.", fontSize = 12.sp, lineHeight = 18.sp)
+                } else LinearProgressIndicator(Modifier.fillMaxWidth())
                 TextButton(enabled = !saving, onClick = ::cancelReading) { Text("Cancel reading") }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 12.dp)) }

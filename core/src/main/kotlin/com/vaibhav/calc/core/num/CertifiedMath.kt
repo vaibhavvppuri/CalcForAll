@@ -9,6 +9,7 @@ internal object CertifiedMath {
     private val ZERO = BigDecimal.ZERO
     private val ONE = BigDecimal.ONE
     private val TWO = BigDecimal(2)
+    private val THREE = BigDecimal(3)
     private val HALF = BigDecimal("0.5")
     private fun point(x: BigDecimal) = DecimalBounds.point(x)
     private fun work(precision: Int) = minOf(precision + 20, NumericLimits.MAX_WORKING_PRECISION)
@@ -107,12 +108,22 @@ internal object CertifiedMath {
         NumericLimits.trigonometric(center)
         val inputRadius = maxOf(center.subtract(x.lower).abs(), x.upper.subtract(center).abs())
         if (inputRadius >= TWO) return DecimalBounds(ONE.negate(), ONE)
-        val twoPi = DecimalEnclosures.constant(Konst.PI, p).multiply(point(TWO), p)
-        val piMid = twoPi.lower.add(twoPi.upper).divide(TWO, MathContext(p))
-        val turns = center.divide(piMid, 0, java.math.RoundingMode.HALF_EVEN)
-        val reduced = point(center).subtract(twoPi.multiply(point(turns), p), p)
-        val reducedCenter = reduced.lower.add(reduced.upper).divide(TWO, MathContext(p))
-        val reductionRadius = maxOf(reducedCenter.subtract(reduced.lower).abs(), reduced.upper.subtract(reducedCenter).abs())
+        val reducedCenter: BigDecimal
+        val reductionRadius: BigDecimal
+        if (center.abs() <= THREE) {
+            // 3 < pi: this center is already inside the Taylor kernel's range.
+            // Keep the complete input radius, but avoid constructing and subtracting
+            // a zero multiple of an enclosed 2*pi for every small-angle sample.
+            reducedCenter = center
+            reductionRadius = ZERO
+        } else {
+            val twoPi = DecimalEnclosures.constant(Konst.PI, p).multiply(point(TWO), p)
+            val piMid = twoPi.lower.add(twoPi.upper).divide(TWO, MathContext(p))
+            val turns = center.divide(piMid, 0, java.math.RoundingMode.HALF_EVEN)
+            val reduced = point(center).subtract(twoPi.multiply(point(turns), p), p)
+            reducedCenter = reduced.lower.add(reduced.upper).divide(TWO, MathContext(p))
+            reductionRadius = maxOf(reducedCenter.subtract(reduced.lower).abs(), reduced.upper.subtract(reducedCenter).abs())
+        }
         val y = point(reducedCenter)
         val square = y.multiply(y, p)
         var term = if (cosine) point(ONE) else y

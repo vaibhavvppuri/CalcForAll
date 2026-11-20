@@ -7,12 +7,16 @@ internal data class PhotoOcrElement(val text: String, val bounds: MathBox?, val 
 internal data class PhotoOcrTokens(
     val tokens: List<MathToken>, val missingGeometry: Boolean = false,
     val usedElementFallback: Boolean = false, val budgetExceeded: Boolean = false,
+    val incompleteText: Boolean = false,
 )
 
 /** A partial SDK symbol list must never silently replace the complete OCR element text. */
 internal object PhotoOcrTokenAdapter {
-    fun collect(elements: Sequence<PhotoOcrElement>): PhotoOcrTokens {
+    fun collect(elements: Sequence<PhotoOcrElement>, expectedText: String? = null): PhotoOcrTokens {
         val tokens = mutableListOf<MathToken>()
+        if (expectedText != null && expectedText.length > MathLayout.MAX_CHARACTERS)
+            return PhotoOcrTokens(emptyList(), budgetExceeded = true)
+        val collectedText = StringBuilder()
         var missing = false; var fallback = false; var characters = 0; var count = 0
         fun usable(box: MathBox?) = box != null &&
             listOf(box.left, box.top, box.right, box.bottom).all { it.isFinite() && abs(it) <= 1_000_000f } &&
@@ -24,6 +28,7 @@ internal object PhotoOcrTokenAdapter {
                 return PhotoOcrTokens(emptyList(), budgetExceeded = true)
             if (element.text.isBlank()) continue
             characters += element.text.length
+            collectedText.append(compact(element.text))
             val symbols = element.symbols
             val complete = symbols.isNotEmpty() && symbols.size <= MathLayout.MAX_TOKENS &&
                 symbols.all { it.text.isNotBlank() && usable(it.bounds) } &&
@@ -41,6 +46,8 @@ internal object PhotoOcrTokenAdapter {
                 return PhotoOcrTokens(emptyList(), budgetExceeded = true)
             tokens += selected
         }
+        if (expectedText != null && collectedText.toString() != compact(expectedText))
+            return PhotoOcrTokens(emptyList(), missing, fallback, incompleteText = true)
         return PhotoOcrTokens(tokens, missing, fallback)
     }
 }

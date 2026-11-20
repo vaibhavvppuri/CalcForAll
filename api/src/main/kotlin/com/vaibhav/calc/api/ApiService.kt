@@ -375,7 +375,7 @@ internal class ApiService(internal val request: ApiRequest) {
     companion object {
         val operations = listOf("evaluate", "convert", "matrix", "statistics", "regression", "base", "graph/sample", "graph/roots", "graph/intersections", "graph/surface", "symbolic", "integrate") + ApiTools.operations
 
-        fun capabilities(): Map<String, Any?> = mapOf("ok" to true, "apiVersion" to 1, "releaseVersion" to "2.1.0", "stateful" to false,
+        fun capabilities(): Map<String, Any?> = mapOf("ok" to true, "apiVersion" to 1, "releaseVersion" to "2.2.0", "stateful" to false,
             "requiresNetwork" to false, "numberEncoding" to "strings preserve exact and arbitrary-precision values",
             "operations" to operations, "limits" to mapOf("bodyBytes" to ApiLimits.BODY_BYTES,
                 "expressionCharacters" to ApiLimits.EXPRESSION_CHARS, "expressionNodes" to ApiLimits.EXPRESSION_NODES,

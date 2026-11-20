@@ -43,4 +43,21 @@ class PhotoOcrTokensSpec : StringSpec({
         blanks.budgetExceeded shouldBe true
         (visited <= 257) shouldBe true
     }
+
+    "missing entire SDK elements cannot leave a calculable prefix" {
+        val partial = PhotoOcrTokenAdapter.collect(sequenceOf(PhotoOcrElement("12", whole, emptyList())), "12-34")
+        partial.incompleteText shouldBe true
+        partial.tokens shouldBe emptyList()
+        PhotoOcrTokenAdapter.collect(emptySequence(), "12").incompleteText shouldBe true
+        PhotoOcrTokenAdapter.collect(sequenceOf(PhotoOcrElement("12", whole, emptyList())), "21").incompleteText shouldBe true
+    }
+
+    "full SDK text coverage ignores whitespace but preserves every mathematical character" {
+        val elements = listOf(PhotoOcrElement("12", whole, emptyList()), PhotoOcrElement("+", whole, emptyList()),
+            PhotoOcrElement("34", whole, emptyList()))
+        PhotoOcrTokenAdapter.collect(elements.asSequence(), "12 +\n34").incompleteText shouldBe false
+        PhotoOcrTokenAdapter.collect(elements.asSequence(), "12+34=").incompleteText shouldBe true
+        PhotoOcrTokenAdapter.collect(elements.asSequence(), "12−34").incompleteText shouldBe true
+        PhotoOcrTokenAdapter.collect(elements.asSequence(), "1".repeat(2049)).budgetExceeded shouldBe true
+    }
 })

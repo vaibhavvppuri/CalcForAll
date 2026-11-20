@@ -32,7 +32,6 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
     BackHandler { if (!saving) onClose() }
     val p = LocalCalcPalette.current
     var strokes by workspace::strokes
-    var redo by workspace::redo
     var current by remember { mutableStateOf<List<InkPoint>>(emptyList()) }
     var expression by workspace::expression
     var stylusOnly by workspace::stylusOnly
@@ -89,11 +88,11 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
             Text("Write a calculation with a finger or stylus.", color = p.blue, fontSize = 13.sp, lineHeight = 19.sp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Your draft stays here until cleared, saved, or the app restarts.", modifier = Modifier.weight(1f), fontSize = 12.sp, lineHeight = 18.sp)
-                TextButton(enabled = !saving, onClick = { workspace.clear() }) { Text("Clear draft") }
+                TextButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = { workspace.clear() }) { Text("Clear draft") }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Math layout", "Spaced line", "One symbol").forEach { item ->
-                    FilterChip(mode == item, onClick = { mode = item; notice = null }, enabled = !saving, label = { Text(item) })
+                    FilterChip(mode == item, onClick = { mode = item; notice = null }, enabled = !saving && !erasingGesture && current.isEmpty(), label = { Text(item) })
                 }
             }
             Text(when (mode) {
@@ -121,11 +120,13 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                             down.consume()
                             val erasing = erase || down.type == PointerType.Eraser
                             if (erasing) {
+                                val before = strokes
+                                var ended = false
                                 val capture = InkStrokeBuffer(InkStrokeBuffer.MAX_POINTS, workspace.paperWidth, workspace.paperHeight)
                                 var previous = point(down.position)
                                 fun removeNear(next: InkPoint) {
                                     val kept = InkGeometry.erase(strokes, previous, next, 18.dp.toPx() / viewport.scale)
-                                    if (kept !== strokes) { workspace.invalidateRecognition(); strokes = kept; redo = emptyList(); inkBlocked = false; if (mode != "One symbol") expression = "" }
+                                    if (kept !== strokes) { strokes = kept }
                                     previous = next
                                 }
                                 erasingGesture = true
@@ -139,9 +140,15 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                                         val path = capture.snapshot()
                                         path.drop(processed).forEach(::removeNear); processed = path.size
                                         change.consume()
-                                        if (!change.pressed) break
+                                        if (!change.pressed) { ended = true; break }
                                     }
-                                } finally { erasingGesture = false }
+                                } finally {
+                                    if (ended && capture.failure == null) {
+                                        workspace.recordInkEdit(before)
+                                        if (before != strokes) { inkBlocked = false; if (mode != "One symbol") expression = "" }
+                                    } else strokes = before // Interrupted erasing is one cancelled edit.
+                                    erasingGesture = false
+                                }
                             } else if (!inkBlocked && strokes.size < (if (mode == "One symbol") 32 else 64) && strokes.sumOf { it.size } < 12000) {
                                 val pointBudget = minOf(InkStrokeBuffer.MAX_POINTS, 12000 - strokes.sumOf { it.size })
                                 val capture = InkStrokeBuffer(pointBudget, workspace.paperWidth, workspace.paperHeight)
@@ -164,7 +171,7 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                                             "That stroke was too long and was not added. Undo or clear the pad before continuing."
                                         else "That stroke contained invalid coordinates and was not added. Undo or clear the pad before continuing."
                                     } else if (ended) {
-                                        capture.completed()?.takeIf { it.isNotEmpty() }?.let { workspace.invalidateRecognition(); strokes = strokes + listOf(it); redo = emptyList() }
+                                        capture.completed()?.takeIf { it.isNotEmpty() }?.let { workspace.commitInk(strokes + listOf(it)) }
                                     }
                                 } finally { current = emptyList() }
                             } else { inkBlocked = true; notice = "Ink limit reached. Undo or clear the pad before adding more." }
@@ -192,30 +199,41 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                candidates.forEach { candidate -> OutlinedButton(enabled = !saving, onClick = {
+                candidates.forEach { candidate -> OutlinedButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = {
                     val glyph = if (candidate.symbol == "√") "sqrt(" else candidate.symbol
                     if (expression.length + glyph.length > RecognitionCalculator.MAX_CHARS) {
                         notice = "The expression is full. Shorten it before adding this symbol; your ink is still on the pad."
                     } else {
                         expression += glyph
-                        workspace.invalidateRecognition(); strokes = emptyList(); redo = emptyList(); notice = null
+                        workspace.invalidateRecognition(); strokes = emptyList(); workspace.resetInkHistory(); notice = null
                     }
                 }) { Text(candidate.symbol, fontSize = 24.sp) } }
             }
             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                TextButton(enabled = !saving && strokes.isNotEmpty(), onClick = { workspace.invalidateRecognition(); redo = redo + listOf(strokes.last()); strokes = strokes.dropLast(1); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Undo stroke") }
-                TextButton(enabled = !saving && redo.isNotEmpty(), onClick = { workspace.invalidateRecognition(); strokes = strokes + listOf(redo.last()); redo = redo.dropLast(1); inkBlocked = false; notice = null }) { Text("Redo stroke") }
-                TextButton(enabled = !saving, onClick = { workspace.invalidateRecognition(); strokes = emptyList(); redo = emptyList(); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Clear pad") }
+                TextButton(enabled = !saving && !erasingGesture && current.isEmpty() && workspace.canUndoInk, onClick = { workspace.undoInk(); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Undo ink") }
+                TextButton(enabled = !saving && !erasingGesture && current.isEmpty() && workspace.canRedoInk, onClick = { workspace.redoInk(); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Redo ink") }
+                TextButton(enabled = !saving && !erasingGesture && current.isEmpty() && strokes.isNotEmpty(), onClick = { workspace.commitInk(emptyList()); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Clear pad") }
                 FilterChip(erase, enabled = !saving, onClick = { erase = !erase }, label = { Text("Eraser") })
             }
             if (reading) LinearProgressIndicator(Modifier.fillMaxWidth())
             notice?.let { Text(it, color = p.amber2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(vertical = 6.dp)) }
             val symbols = mathDraft?.sourceTokens?.map { it.text } ?: if (lineDraft != null) lineSymbols else emptyList()
             if (symbols.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                symbols.forEachIndexed { index, symbol -> TextButton(enabled = !saving, onClick = { selectedGlyph = index }) { Text("${index + 1}: $symbol") } }
+                symbols.forEachIndexed { index, symbol -> TextButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = { selectedGlyph = index }) { Text("${index + 1}: $symbol") } }
             }
-            OutlinedTextField(expression, { if (it.length <= CalcSession.MAX_ENTRY_CHARS) { expression = it; inkBlocked = false } else { notice = "The pasted text is too long and was not inserted."; inkBlocked = true } }, enabled = !reading && !saving,
+            OutlinedTextField(expression, { if (it.length <= CalcSession.MAX_ENTRY_CHARS) { expression = it; inkBlocked = false } else { notice = "The pasted text is too long and was not inserted."; inkBlocked = true } }, enabled = !reading && !saving && !erasingGesture && current.isEmpty(),
                 keyboardOptions = MathKeyboard, label = { Text("Expression · edit to correct") }, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+            Text("Apply a function to this expression, or start typed entry if empty", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                listOf("sqrt", "sin", "cos", "tan", "ln", "log", "abs").forEach { function ->
+                    TextButton(enabled = !reading && !saving && !erasingGesture && current.isEmpty(), onClick = {
+                        val changed = if (expression.isBlank()) "$function(" else "$function($expression)"
+                        if (changed.length <= RecognitionCalculator.MAX_CHARS) {
+                            expression = changed; inkBlocked = false
+                        } else notice = "The expression is full. Shorten it before adding a function."
+                    }) { Text(function) }
+                }
+            }
             Text("${settings.angle.name} · New ink replaces the draft. Cursive and unclear symbols need correction.", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
             RecognitionAnswer(expression, settings, environment, enabled = !reading && current.isEmpty() && !erasingGesture && !inkBlocked, saving = saving, onSave = onUse)
             Spacer(Modifier.height(16.dp))

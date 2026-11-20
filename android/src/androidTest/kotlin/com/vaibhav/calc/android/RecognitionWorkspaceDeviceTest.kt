@@ -17,14 +17,15 @@ class RecognitionWorkspaceDeviceTest {
         try {
             scenario.onActivity { activity ->
                 before = ViewModelProvider(activity)[RecognitionWorkspaces::class.java]
-                before.ink.strokes = listOf(listOf(InkPoint(20f, 10f), InkPoint(20f, 150f)))
+                before.ink.commitInk(listOf(listOf(InkPoint(20f, 10f), InkPoint(20f, 150f))))
                 before.ink.paperWidth = 300f; before.ink.paperHeight = 200f
                 before.ink.expression = "1+2" // Manual correction must remain a correction.
                 before.photo.bitmap = picture
                 before.photo.text = "sqrt(16)"
                 before.photo.recognizedText = "V16"
                 before.photo.region = PhotoRegion(.1, .2, .8, .9)
-                before.photo.pendingRender = PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1)
+                before.photo.treatment = PhotoImageTreatment.CONTRAST
+                before.photo.pendingRender = PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST)
                 before.saving = true
                 before.saveError = "A retained test notice"
             }
@@ -34,12 +35,18 @@ class RecognitionWorkspaceDeviceTest {
                 assertSame(before, after)
                 assertEquals("1+2", after.ink.expression)
                 assertEquals(InkPoint(20f, 150f), after.ink.strokes.single().last())
+                assertTrue(after.ink.canUndoInk)
+                assertTrue(after.ink.undoInk())
+                assertTrue(after.ink.strokes.isEmpty())
+                assertTrue(after.ink.redoInk())
+                assertEquals(InkPoint(20f, 150f), after.ink.strokes.single().last())
                 assertEquals(300f, after.ink.paperWidth, 0f)
                 assertSame(picture, after.photo.bitmap)
                 assertEquals("sqrt(16)", after.photo.text)
                 assertEquals("V16", after.photo.recognizedText)
                 assertEquals(PhotoRegion(.1, .2, .8, .9), after.photo.region)
-                assertEquals(PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1), after.photo.pendingRender)
+                assertEquals(PhotoImageTreatment.CONTRAST, after.photo.treatment)
+                assertEquals(PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST), after.photo.pendingRender)
                 assertTrue(after.saving)
                 assertEquals("A retained test notice", after.saveError)
                 after.saving = false
@@ -48,6 +55,8 @@ class RecognitionWorkspaceDeviceTest {
         assertNull(before.photo.bitmap)
         assertNull(before.photo.pendingRender)
         assertTrue(before.ink.strokes.isEmpty())
+        assertFalse(before.ink.canUndoInk)
+        assertFalse(before.ink.canRedoInk)
         // The application releases references instead of recycling potentially in-flight OCR input.
         assertFalse(picture.isRecycled)
         picture.recycle()

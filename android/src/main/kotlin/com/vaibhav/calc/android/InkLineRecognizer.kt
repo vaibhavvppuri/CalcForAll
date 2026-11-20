@@ -58,6 +58,9 @@ object InkLineRecognizer {
             val dot = max(box.width, box.height) <= max(1f, height * .08f)
             if (group.size > 4 || box.width > max(12f, height * 1.7f))
                 return reject("Symbols overlap or span other symbols. Leave a gap between each symbol; stacked fractions and radicals are not supported.")
+            val detachedCap = if (group.size in 2..3) group.indices.firstOrNull { capIndex ->
+                InkRecognizer.detachedTopDigit(group[capIndex], group.filterIndexed { index, _ -> index != capIndex }) != null
+            } else null
             if (group.size >= 3) {
                 val parts = group.map { bounds(listOf(it)) }
                 val connected = mutableSetOf(0)
@@ -71,7 +74,7 @@ object InkLineRecognizer {
                         }) connected.add(next)
                     }
                 }
-                if (connected.size != parts.size)
+                if (connected.size != parts.size && detachedCap == null)
                     return reject("Separate stacked marks are ambiguous. Use one line without fractions or superscripts.")
             }
             if (!dot && abs(box.centerY - center) > height * .3f)
@@ -79,6 +82,21 @@ object InkLineRecognizer {
             if (dot && box.centerY < center)
                 return reject("A raised dot is ambiguous. Write decimal dots near the baseline.")
             val raw = if (dot) listOf(InkCandidate(".", 0f)) else InkRecognizer.recognize(group)
+            // A detached digit cap is meaningful, but an arbitrary overline must
+            // not disappear into a digit (or into factorial's stem/dot template).
+            // Equals, pi and ordinary connected crossbars retain their own rules.
+            if (group.size > 1 && raw.firstOrNull()?.symbol?.let { it in "0123456789!" } == true) {
+                for ((capIndex, cap) in group.withIndex()) {
+                    val capBox = bounds(listOf(cap))
+                    val body = group.filterIndexed { index, _ -> index != capIndex }
+                    val bodyBox = bounds(body)
+                    if (capBox.width >= max(8f, bodyBox.height * .35f) &&
+                        capBox.height <= capBox.width * .12f &&
+                        bodyBox.top > capBox.bottom + max(1f, bodyBox.height * .03f) &&
+                        InkRecognizer.detachedTopDigit(cap, body) == null)
+                        return reject("A bar above symbol ${index + 1} is ambiguous. Complete its digit strokes or use Math layout for fractions and roots.")
+                }
+            }
             val supported = "0123456789.+−×/=()^xπ%!"
             if (raw.isNotEmpty() && raw.first().symbol !in supported)
                 return reject("Symbol ${index + 1} needs single-symbol mode. Radical bars and two-dimensional layouts are not supported in a line.")

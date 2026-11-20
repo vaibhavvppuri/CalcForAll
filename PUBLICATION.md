@@ -1,10 +1,10 @@
-# Public Version 1.3
+# Public Version 1.4
 
-This historical development release is publicly labelled Version 1.3. Its unchanged APK, API and source embed the earlier internal name `2.1.0`; that embedded name does not designate the reserved final Version 2.0 milestone. Original tested source commit: `6e82146d95621e834c9c0b959385f490c8f8f3a9`.
+This historical development release is publicly labelled Version 1.4. Its unchanged APK, API and source embed the earlier internal name `2.2.0`; that embedded name does not designate the reserved final Version 2.0 milestone. Original tested source commit: `8dc315dae79dee06f5bba9a3b447d86119a008a8`.
 
-Download the development-signed Android APK, optional local API, complete source and historical verification evidence from [Version 1.3](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.3).
+Download the development-signed Android APK, optional local API, complete source and historical verification evidence from [Version 1.4](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.4).
 
-This version improves photo crops using original-image detail, retains photo and handwriting drafts across tool reopening and activity recreation, improves stroke erasing and adds verified persistence with safe retry for reviewed saves. Unsaved drafts remain memory-only and do not survive process death. Review the recognized expression and answer. Poor photographs, connected handwriting and unsupported mathematical layouts can still require correction or typed input.
+This version adds explicit photo orientation choices, contrast and dark-image treatments, recoverable image replacement, bounded undo/redo for complete ink edits and additional ink-style candidates. Treatment fixtures show workflow behavior rather than a general recognition-accuracy improvement. Unsaved drafts remain memory-only and do not survive process death. Review the recognized expression and answer. Poor photographs, connected handwriting and unsupported mathematical layouts can still require correction or typed input.
 
 The public source archive is byte-identical to the historical source archive. Every tracked source file and build input retains the original Git identity. The APK and API also remain byte-identical to the tested originals. Release assets include PUBLICATION.json mapping all original/public archive members and hashes, and public-verification.json describing the historical checks and publication audit. Evidence-only privacy changes are documented there.
 

@@ -30,6 +30,7 @@ object MathInkRecognizer {
         val isolated = mutableSetOf<Int>()
         val forced = mutableMapOf<Int, String>()
         val candidates = mutableMapOf<Int, List<InkCandidate>>()
+        val detachedDigits = mutableSetOf<Int>()
         fun horizontal(i: Int): Boolean {
             val b = boxes[i]
             return b.width > max(4f, typical * .3f) && b.height <= max(1.5f, b.width * .12f) &&
@@ -126,6 +127,32 @@ object MathInkRecognizer {
             if (i in isolated || j in isolated) continue
             if (overlap(boxes[i], boxes[j], tolerance) && near(paths[i], paths[j], tolerance)) join(i, j)
         }
+        // Some writers lift the pen before adding the top of 5/7. Recognize the
+        // complete bounded shape, require a unique pairing in BOTH directions,
+        // and leave uncertain/spanning bars to the existing fraction reader.
+        val components = strokes.indices.filter { it !in isolated }.groupBy(::root).values.toList()
+        val topPairs = mutableListOf<Pair<Int, List<Int>>>()
+        for (bar in bars) {
+            if (bar in isolated || components.none { it.size == 1 && it.single() == bar }) continue
+            for (body in components) {
+                if (bar in body || body.size > 2) continue
+                if (expired()) return MathLayoutResult.Rejected("This drawing needs too much recognition work. Read a smaller expression.")
+                val b = union(body.map { boxes[it] }); val cap = boxes[bar]
+                if (b.top < cap.bottom || b.top - cap.bottom > b.height * .18f) continue
+                // An independent numerator or another mark inside this cap/body
+                // footprint makes joining ambiguous. Do not consume it as a digit.
+                if (strokes.indices.any { k -> k != bar && k !in body &&
+                        boxes[k].centerX in cap.left..cap.right &&
+                        boxes[k].bottom >= cap.top - b.height * .6f && boxes[k].top <= b.bottom }) continue
+                if (InkRecognizer.detachedTopDigit(strokes[bar], body.map { strokes[it] }) != null)
+                    topPairs += bar to body
+            }
+        }
+        for ((bar, body) in topPairs) {
+            if (topPairs.count { it.first == bar } != 1 || topPairs.count { it.second == body } != 1) continue
+            body.forEach { join(bar, it) }
+            detachedDigits += bar
+        }
         // Equals consists of disconnected, similarly sized parallel bars with nothing between.
         for (i in bars) for (j in bars) {
             if (j <= i || i in isolated || j in isolated || root(i) != i || root(j) != j) continue
@@ -159,7 +186,7 @@ object MathInkRecognizer {
                 return MathLayoutResult.Rejected("Symbol ${index + 1} is unclear or contains connected writing. Separate it before calculating.")
             val uncertain = best.distance > .075f || matches.drop(1).any { it.distance - best.distance < .018f && it.symbol != best.symbol }
             tokens += MathToken(best.symbol, b, matches.drop(1).map { it.symbol }, if (force == null) best.distance else null,
-                uncertain = uncertain || force != null, sourceIndex = index)
+                uncertain = uncertain || force != null || group.any { it in detachedDigits }, sourceIndex = index)
         }
         return MathLayout.read(tokens)
     }

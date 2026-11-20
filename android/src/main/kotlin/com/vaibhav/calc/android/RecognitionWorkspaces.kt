@@ -17,7 +17,11 @@ class RecognitionWorkspaces : ViewModel() {
 class InkWorkspace {
     val recognitionLock = Mutex()
     var strokes by mutableStateOf<List<List<InkPoint>>>(emptyList())
-    var redo by mutableStateOf<List<List<InkPoint>>>(emptyList())
+    private val history = InkEditHistory()
+    var canUndoInk by mutableStateOf(false)
+        private set
+    var canRedoInk by mutableStateOf(false)
+        private set
     var expression by mutableStateOf("")
     var stylusOnly by mutableStateOf(false)
     var mode by mutableStateOf("Math layout")
@@ -34,8 +38,37 @@ class InkWorkspace {
     var paperWidth by mutableFloatStateOf(0f)
     var paperHeight by mutableFloatStateOf(0f)
     fun invalidateRecognition() { recognizedStrokes = null; recognizedMode = null }
+    fun commitInk(next: List<List<InkPoint>>): Boolean {
+        val copy = InkEditHistory.snapshot(next)
+        if (!history.record(strokes, copy)) return false
+        strokes = copy
+        invalidateRecognition(); publishHistory()
+        return true
+    }
+    /** Called once after a whole eraser gesture has already updated the visible ink. */
+    fun recordInkEdit(before: List<List<InkPoint>>): Boolean {
+        val copy = InkEditHistory.snapshot(strokes)
+        if (!history.record(before, copy)) return false
+        strokes = copy
+        invalidateRecognition(); publishHistory()
+        return true
+    }
+    fun undoInk(): Boolean {
+        val restored = history.undo(strokes) ?: return false
+        strokes = restored
+        invalidateRecognition(); publishHistory()
+        return true
+    }
+    fun redoInk(): Boolean {
+        val restored = history.redo(strokes) ?: return false
+        strokes = restored
+        invalidateRecognition(); publishHistory()
+        return true
+    }
+    fun resetInkHistory() { history.clear(); publishHistory() }
+    private fun publishHistory() { canUndoInk = history.canUndo; canRedoInk = history.canRedo }
     fun clear() {
-        strokes = emptyList(); redo = emptyList(); expression = ""
+        strokes = emptyList(); resetInkHistory(); expression = ""
         lineDraft = null; mathDraft = null; lineSymbols = emptyList()
         candidates = emptyList(); selectedGlyph = null; notice = null; inkBlocked = false
         recognizedStrokes = null; recognizedMode = null
@@ -43,13 +76,15 @@ class InkWorkspace {
     }
 }
 
-data class PhotoRenderRequest(val region: PhotoRegion, val quarterTurns: Int)
+data class PhotoRenderRequest(val region: PhotoRegion, val quarterTurns: Int,
+                              val treatment: PhotoImageTreatment = PhotoImageTreatment.ORIGINAL)
 
 class PhotoWorkspace {
     var source by mutableStateOf<PhotoSource?>(null)
     var bitmap by mutableStateOf<Bitmap?>(null)
     var region by mutableStateOf(PhotoRegion.FULL)
     var quarterTurns by mutableIntStateOf(0)
+    var treatment by mutableStateOf(PhotoImageTreatment.ORIGINAL)
     var text by mutableStateOf("")
     var recognizedText by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
@@ -64,7 +99,7 @@ class PhotoWorkspace {
     var revision = 0
     fun clear() {
         revision++
-        source = null; bitmap = null; region = PhotoRegion.FULL; quarterTurns = 0
+        source = null; bitmap = null; region = PhotoRegion.FULL; quarterTurns = 0; treatment = PhotoImageTreatment.ORIGINAL
         text = ""; recognizedText = ""; error = null; warnings = emptyList(); corrections = emptyList()
         editRejected = false; needsRead = false; pendingRender = null; crop = false; cropX = 0f..1f; cropY = 0f..1f
     }
