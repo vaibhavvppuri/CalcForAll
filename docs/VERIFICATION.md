@@ -1,3 +1,128 @@
+# CalcForAll 2.3.0 candidate — strict release acceptance blocked
+
+**Status on 15 November 2026, India time:** Android and local API version `2.3.0`; Android version code **8**; baseline delivered 2.2 source `8dc315d`. Gate2 accepted **1,481 clean host tests**, fresh lint analysis and the replacement APK. Current artifact audits passed; the unchanged packaged API retains **19/19 smoke checks**. The final manual ledger records **four API23 and five API34 observations**, but **three full API23 runs and the completed API34 host-renderer run each passed 30/31**, with the same default DEG `cos(x)=x` numerical root-search time-budget failure. All photo/ink cases passed individually. **Strict release acceptance is blocked: `releaseAccepted=false`.** This is a candidate-only handoff; the release gates are unchanged. First-candidate results below refer only to their superseded APK, and source/archive integrity is separate from release acceptance. The complete 2.2 and earlier records below remain unchanged.
+
+## Host gate and artifact identity
+
+| Check | Current result | Evidence |
+| --- | ---: | --- |
+| Core tests | **1,043 / 83 suites** | Current JUnit XML; task up-to-date in Gate2 |
+| Android local unit tests | **360 / 44 suites** | Current JUnit XML |
+| API tests | **69 / 4 suites** | Current JUnit XML; task up-to-date in Gate2 |
+| Battery harness tests | **9 / 4 suites** | Current JUnit XML |
+| Combined host receipts | **1,481; 0 failures, errors or skips** | `artifact-final-summary.json` |
+| Gate2 | **BUILD SUCCESSFUL, 5m 14s** | `all-modules-2.log` |
+| Battery case records | **1,910 PASS, 110 PROBE, 0 FAIL** | All B1/B2/B3 records; PROBE is exploratory |
+| Core Android-import boundary | **159 files; no Android imports** | Gate2 |
+| Android lint | **0 errors, 4 warnings, 4 informational findings** | Fresh Gate2 analysis; unchanged cached XML report |
+| Packaged API smoke | **19/19; owned JVM stopped** | `api-2.3-smoke-final.json` |
+
+Gate2 freshly executed Android and battery testing; unchanged core/API test tasks were up-to-date and their clean receipts remain current to their source/build inputs. This is not a claim that all 1,481 tests were freshly executed in this gate. Gate2 freshly executed lint analysis for the app, instrumentation and unit tests; the unchanged XML report was up-to-date. The release configuration selects Gate2 for both host acceptance and strict cached-report freshness proof, requiring completed analysis after current production/build inputs. No older-log fallback or relaxed lint rule is used.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `android-debug.apk` | 56,726,982 | `73656e391d3e93079cfed85349c1858cac89d1a5b91aecc83cf1bf516de072b5` |
+| `android-debug-androidTest.apk` | 492,316 | `b02d00b304b344396fba1a57a1ff73583e025efa30ae232cc85f89534c448845` |
+| `api-2.3.0.zip` | 10,722,556 | `47e883d33068a0a86521c42f60d321e4a7573f4a215227c7edd67b59995998bf` |
+
+## What the new checks establish
+
+Ink review retains a complete bounded set of glyph groups independently of whether their combined layout succeeds. Explicit replacement preserves all other choices and their geometry; a rejected rebuild clears the automatic expression while retaining the corrected symbols for another edit. New committed ink, erasing, Undo/Redo and clearing invalidate previous review targets. Budget, malformed-coordinate and unsupported connected-writing refusals do not return a useful-looking partial token list.
+
+Conservative geometric cases add a separate square-root hook/overbar and dotted division. Tests include alternate stroke order and negative cases against minus/fraction/dot arrangements. These additions reuse local geometric templates; they are not a new learned model or general handwriting recognition. Full manual symbol choice remains distinct from a recognition-confidence claim.
+
+Photo systems are **explicit proposals for two or three separated equation rows**. Equality anchors and the single-row layout reader must account for every token; row overlap, extra text, missing geometry and other unsupported arrangements cannot be silently omitted. All proposed rows appear for review. The default expression remains blank for the rejected multiline layout until a user chooses a proposal. Two/three-row host fixtures check independent solutions and refusal cases; the native photo fixture exercises the actual OCR SDK on the synthetic two-row image.
+
+### Unknown-token evidence boundary
+
+`unclear-ink-probe.json` records an actual compiled-recognizer search over **600 synthetic stroke shapes**, with seed `230115`: **`found: false`**. It did not find a usable naturally recognized `?` example; its best recorded mismatch distance was about **0.151963**, still below the unknown threshold. This failed search is not an unknown-glyph UI pass or an accuracy benchmark.
+
+Unknown-token retention/recovery is covered by a deterministic matcher seam in host tests and explicitly seeded tokens in native workspace/recreation tests. Those tests do not prove that a real pen gesture produced `?`. The actual manual checks below instead start from real drawn `1+1`, explicitly create a rejected layout, and verify successive correction and recovery through the UI.
+
+## Superseded first candidate and the reason for another gate
+
+Gate1 passed in **9m 36s**, accepting 1,481 clean host receipts and fresh lint. Its APK hash was `8ade05439568d5c1f9ab0c0cd4385dc442f72b0fcd24b924386340b5fa71b6b0` (56,093,639 bytes). Both native suites and the ink observations below passed on that APK. Actual photo OCR also solved the two/three-row systems, but visual inspection found that the default pill-shaped button clipped the first `X` and part of the explanation on a tall three-row proposal. That is a UI acceptance failure even though the calculated solution was correct. The button now uses the app's medium rounded rectangle; Gate2 built the replacement above. Candidate1's APK/test APK, logs and observations are preserved in `candidate1/`, with its visual check corrected to failing. They are not reused as device acceptance for the replacement.
+
+The replacement's native preflight refused an instrumentation APK whose timestamp predated the changed PhotoScreen source, although Gradle had considered that package up-to-date. No native tests ran in that attempt: it was a source-freshness refusal, not a test assertion failure. The generated package was moved aside and explicit instrumentation repackaging succeeded in **30 seconds**, with one package task executed and 45 tasks up-to-date. `instrumentation-package-refresh.log` records that operation. Fresh device runs must identify its resulting bytes above and current source inputs.
+
+## Replacement APK: API23 failed runs and recorded manual checks
+
+The first replacement-APK API23 run executed all **31 tests**, with **one failure**: numeric root search exceeded its unchanged **5,000 ms** time budget after **70 attempted evaluations**. The other 30 tests passed, including the photo and ink checks. The instrumentation log reports **357.628 seconds**, while the runner measured **369.873 seconds** around the command. The exact failed attempt is retained as `android-device-api23-run-20261115T091237674Z-901515a3.json` and its `.log`, explicitly included in the evidence configuration; it is not a passing receipt.
+
+`api23-host-pressure.json` records 777,180 KiB free physical host memory and no parallel Java processes during that slow run. Host pressure is a possible contributor, **not an established cause or an excuse to discard the failure**.
+
+The full warm retry also passed **30/31**: the same numeric range check exceeded **5,000 ms**, this time after **128 attempted evaluations**. Instrumentation reported **385.094 seconds**; the command interval was **395.308 seconds**. Receipt/log `android-device-api23-run-20261115T092856239Z-03a2d822` retain that failure. The explicit reuse path checked both installed APK hashes and current source inputs and retained all offline, test-count and calculation-budget checks. Reuse did not turn this run into a pass.
+
+After a 15-second backoff, a third complete run used a **process-local soft working-set experiment** on the verified owned emulator process. `api23-residency-experiment.json` records requested minimum **512 MiB** and maximum **2 GiB**, replacing its prior soft settings of 204,800/1,413,120 bytes. The settings applied, but actual working-set bytes initially remained **57,548,800**; a later observation recorded 147,775,488 bytes. Soft targets did not reserve residency, and these observations do not prove a paging cause.
+
+That third run also passed **30/31**: the same **5,000 ms** numeric root-search budget expired after **104 attempted evaluations**. Instrumentation reported **410.124 seconds**, and the command interval was **421.261 seconds**. Receipt/log `android-device-api23-run-20261115T093915347Z-1c5e17b1` retain this failure. The experiment did not resolve the acceptance blocker. Its original soft working-set settings were restored successfully, then the owned API23 emulator was stopped. `manual-network-api23-final.json` records no active default network, Wi-Fi `0` and mobile data `0` after the manual/retry work. No production code, numerical kernel, calculation budget, global power setting or unrelated application setting changed, and no test was removed or relabelled as passing.
+
+These repeated failures remain part of the candidate evidence. The strict 31/31-per-device release requirement is unchanged; a separate candidate packaging/audit path records **`releaseAccepted=false`** rather than weakening the release validators or treating archive integrity as application acceptance.
+
+Four actual replacement-APK observations are recorded for API23 in the current `manual-qa-input.json`:
+
+1. At font scale **1.3**, the picker-loaded synthetic three-equation proposal displayed all three rows; raster inspection confirmed that the first `X` and final explanation line fit inside the corrected rounded rectangle.
+2. One explicit proposal selection populated `X+y+Z=6`, `2*x-y+z=3`, `X+y-z=0` and displayed **x = 1; y = 2; z = 3**, without typed transcription.
+3. ADB touch ink `1+1` was changed through the palette to `1+√`, then `4+√`. The missing-argument refusal retained all targets with no partial expression; closing and reopening retained those choices and refusal.
+4. Replacing only the remaining root with `2` preserved the earlier `4` and recovered **`4+2 = 6`** without typing the expression.
+
+These four API23 checks did not save a calculation. First-candidate save/restart observations below are historical and are not silently relabelled as replacement-APK saves. The current API34 save/restart checks are listed separately below. No passing combined device receipt is claimed while the strict native acceptance blocker remains.
+
+## Replacement API34: interrupted software-renderer attempt and host comparison
+
+The first replacement-APK API34 attempt, `20261115T094748583Z-d830e75a`, was **interrupted by the parent agent**, not a completed failing 31-test suite or a boot/install failure. Buffered runner output initially obscured progress. Its retained receipt proves both APKs had installed with matching hashes and instrumentation started at **09:54:49 UTC**; the parent stopped the emulator at **09:55:57 UTC** to change renderer configuration. Ten individual tests had completed and the orientation-search case was running. ADB exited **255** with no full-suite verdict. `api34-software-run-interruption.json` records that correction and the original evidence remains intact.
+
+That emulator was requested with **1,024 MiB**, but actual guest `/proc/meminfo` reported **2,534,552 KiB** and startup output said RAM was increased to **2,560 MB**. Requested memory must therefore not be described as its actual allocation. A fresh comparison uses explicit **host graphics**, with observed Android Emulator OpenGL ES Translator / **Intel UHD Graphics**, and records the same actual guest MemTotal separately from the launch request. It does not change application code, precision, time budgets or the 31-test requirement.
+
+The full host-renderer run, `20261115T095738116Z-9b52e457`, completed **31 tests with one failure**: the same default DEG `cos(x)=x` numeric range search exceeded **5,000 ms after 94 attempted evaluations**. Instrumentation reported **504.274 seconds**, while the runner's command interval was **528.884 seconds**. All other cases passed, including the photo/ink tests. Both installed APK hashes and all 207 current source/build inputs are identified in its receipt; offline state was verified before testing. The runner exits on the failed suite before its ordinary after-test network/corpus export. A separate final observation, `manual-network-api34-final.json`, records **no active default network, Wi-Fi `0` and mobile data `0`** after manual work; it is not an inferred field of the failed native receipt. The owned emulator was then stopped.
+
+Changing renderer did not resolve the acceptance failure; no causal or general performance improvement claim is made. No numerical patch or further environment experiment was used to force acceptance; the strict numerical budget and complete-suite gate remain unchanged.
+
+### Final API34 manual photo observations
+
+Five current-APK checks are recorded in `manual-qa-input.json`, each with screenshot/XML evidence:
+
+1. Importing the synthetic three-row fixture through the picker showed the complete equations and explanation inside the corrected card. The automatic expression remained blank until selection.
+2. One explicit candidate tap populated all three editable equations and displayed **x = 1; y = 2; z = 3**, without typing or substituting an expected expression.
+3. One **Save reviewed calculation** moved history from **6 to 7**. Reopening Photo calculator showed no image and an empty expression. An immediate assertion was too early; later inspection confirmed completion without tapping Save again.
+4. Force-stop/restart retained **seven** history entries. New row **7** contained all three reviewed equations and **x = 1; y = 2; z = 3**, above unchanged row 6; previews and selection created no extra history.
+5. The negative fixture containing **Solve** above two equations preserved all three detected raw lines. No system correction was offered, the automatic expression stayed blank, and no numerical answer was substituted by discarding the heading.
+
+Before these checks, a **System UI isn't responding** dialog blocked the initial app launch. One **Wait** tap and 15 seconds restored access to the calculator and Tools. `manual-environment-events.json` records the incident and before/after screenshots. It is a platform observation and recovery, not an app feature pass, an asserted app ANR, or proof of a hardware cause. These manual workflows do not override the native gate failure, and they do not establish physical-phone or stylus performance.
+
+## Superseded first-candidate native and actual ink observations
+
+The first-candidate API23 / Android 6 emulator passed **31/31 native tests** with a **768 MiB launch request**, not an independently measured allocation. Its instrumentation log reports **118.277 seconds**; the runner measured **119.045 seconds** around the command, a different interval. Its receipt binds that installed candidate APK, instrumentation APK and **207 source/build inputs** at the time of the run. No active default network and disabled Wi-Fi/mobile data were recorded before and after the native run.
+
+Six first-candidate manual observations are preserved in `candidate1/manual-qa-input.json` with screenshot/XML evidence:
+
+1. Four ADB touch swipes formed `1+1`; the full symbol palette was reachable at font scale **1.3**, including root, division, pi and `z`.
+2. Replacing the final `1` with `√` refused the missing root argument and cleared the expression. Replacing the first `1` with `4` retained all three choices, including the prior root, without a partial answer.
+3. Back, then reopening **Write & calculate**, retained `4`, `+`, `√`, the refusal notice and a blank expression.
+4. Replacing only that root with `2` recovered **`4+2` and answer 6**, retaining the earlier correction.
+5. One explicit reviewed save increased history from **11 to 12**; reopening handwriting showed an empty pad.
+6. Force-stop/restart retained history **12**, with newest row **`4+2 = 6`** above the prior row 11. Intermediate previews/corrections added no rows.
+
+These are emulator touch observations, not physical finger/stylus validation.
+
+First-candidate API34 / Android 14 also passed **31/31 native tests**, with a **1,024 MiB launch request**, not an independently measured allocation. Its log reports **99.302 seconds**, while the runner measured **102.500 seconds** around the command. It identifies the same candidate APK, test APK and source/build inputs as its API23 run, with no active default network and disabled Wi-Fi/mobile data before and after the run. These are historical observations on two emulators, not replacement-APK acceptance or a general performance claim. The later actual MemTotal finding explains why historical launch-request numbers must not be read as measured guest memory.
+
+## Synthetic corpus: current API34 observation and historical first candidate
+
+The failed native gate did not automatically export a current corpus report. API34's actual report was subsequently captured separately as `photo-corpus-api34-current-observation.json`; `photo-corpus-api34-capture.json` binds it to the installed APK, the completed host-renderer run and its SHA-256. The device file's **10:11:18 UTC** modification time falls within that run. A culture-dependent timestamp conversion initially failed during capture validation; the raw ISO timestamps and bytes were revalidated independently with Python. This observation is explicitly marked **`fullSuitePassed=false`**.
+
+That current API34 report records **four automatic matches and four assisted-only matches**. Addition, parentheses, quadratic and stacked fractions match automatically. Integer root, decimal root, raised power and the two-row equation system match through explicit correction candidates. Every entry remains **PROBE**, with `accuracyBenchmark: false`; this is not eight automatic successes, population recognition accuracy or a repaired native gate. No current API23 corpus-count claim is made: its failed runner exited before export, and its stale first-candidate report was moved out of current evidence. Both first-candidate corpora remain historical, each with the same 4/4 split for their own APK.
+
+For the two-row image, raw OCR retains `X+y=5` followed by `X-y=1`. Automatic layout remains rejected and the default expression empty. The new offered two-row correction independently solves to **x = 3; y = 2** when evaluated by the corpus. This improves the explicit review path over 2.2's raw-text-only workflow without reinstating automatic flattened fallback. The separately recorded final manual save/restart workflow used the **three-row** fixture; it is not substituted for this two-row corpus observation.
+
+## Artifact audits and retained limits
+
+Current security, static native alignment and packaged-notice audits passed against the APK/API hashes above. They do not override the blocked native release gate. Signature verification passed **v1/v2**, with the existing single **Android Debug** signer; raw warnings are retained. Only the app-specific `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` is declared/requested; **INTERNET is absent**. This is a development-signed APK.
+
+The native audit checks four OCR libraries with 16 KB-aligned ZIP offsets; the two 64-bit libraries pass its ELF alignment/RELRO checks, while the two 32-bit libraries retain 4 KB ELF alignment. This is not execution on a 16 KB-page runtime. The notice audit matched **36 APK legal files, 38 API notice files and 21 external API JARs**, with two project JARs and the desugaring corresponding-source archive checked. Committed source, candidate checksums and portable evidence/archive integrity are established separately by `candidate-manifest.json` and `candidate-package-audit.json`. Their `packageIntegrityVerified` concerns completed file/hash/CRC checks only; **`passed=false` and `releaseAccepted=false`** preserve the blocked release verdict. The audit identifies itself as the packager's integrity check, not independent application acceptance. `candidate-evidence-status.json` retains original receipt verdicts and separately reports test counts parsed from logs; failed runner receipts whose pass-summary counters are zero are not rewritten. Consult those external receipts for archive-integrity outcomes; this source record does not assert a strict release-audit pass.
+
+Recognition remains bounded and editable. A calculable expression is not proof of a correct transcription. Unrestricted cursive, handwritten function words, arbitrary pages/word problems and unrestricted CAS remain unsupported. Physical phones, physical styluses, TalkBack and a 16 KB-page runtime remain untested. Ink/layout budgets, numerical domains and uncertainty limits are retained. Unsaved photos, ink and review/history edits are memory-only; explicit reviewed saving writes calculation history. Processing remains offline and free, without image uploads, paid APIs or runtime model downloads; this increment adds no bundled recognition model or runtime dependency.
+
 # Verification record
 
 ## CalcForAll 2.2.0 — host, offline device and packaged-runtime checks passed

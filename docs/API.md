@@ -1,6 +1,6 @@
 # CalcForAll local API
 
-Release **2.2.0** keeps the additive **v1** wire protocol. `/v1/capabilities` distinguishes `releaseVersion` from `apiVersion`; existing endpoint paths and numeric machine fields remain available.
+Release **2.3.0** keeps the additive **v1** wire protocol. `/v1/capabilities` distinguishes `releaseVersion` from `apiVersion`; existing endpoint paths and numeric machine fields remain available.
 
 The optional JVM server uses the **same `:core` calculator as the Android app**. It does not call an external service, require an account, upload inputs, or charge for calculations. The Android app does not need this server to run.
 

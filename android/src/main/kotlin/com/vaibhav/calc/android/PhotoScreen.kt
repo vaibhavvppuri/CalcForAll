@@ -290,11 +290,13 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
             if (corrections.isNotEmpty()) {
                 Text("Possible corrections · check the image first", fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 12.dp))
                 corrections.forEach { correction ->
-                    OutlinedButton(enabled = !busy && !saving, modifier = Modifier.fillMaxWidth(), onClick = {
+                    OutlinedButton(enabled = !busy && !saving, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth(), onClick = {
                         text = correction.expression; editRejected = false; scrollAfterRead = true
                         warnings = listOf("You selected a suggested correction. Check every symbol against the image before saving.")
                     }) { Column(Modifier.fillMaxWidth()) {
-                        Text(correction.expression, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        // A multi-equation choice must show every row before selection.
+                        // Candidate text is bounded by the recognition input limits.
+                        Text(correction.expression)
                         Text(correction.explanation, fontSize = 12.sp, lineHeight = 18.sp)
                     } }
                 }

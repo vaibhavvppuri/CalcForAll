@@ -28,6 +28,8 @@ class InkWorkspace {
     var erase by mutableStateOf(false)
     var lineDraft by mutableStateOf<InkLineResult.Draft?>(null)
     var mathDraft by mutableStateOf<MathLayoutResult.Draft?>(null)
+    /** Complete glyph groups stay reviewable even if their combined layout is rejected. */
+    var reviewTokens by mutableStateOf<List<MathToken>>(emptyList())
     var lineSymbols by mutableStateOf<List<String>>(emptyList())
     var candidates by mutableStateOf<List<InkCandidate>>(emptyList())
     var selectedGlyph by mutableStateOf<Int?>(null)
@@ -37,7 +39,26 @@ class InkWorkspace {
     var recognizedMode: String? = null
     var paperWidth by mutableFloatStateOf(0f)
     var paperHeight by mutableFloatStateOf(0f)
-    fun invalidateRecognition() { recognizedStrokes = null; recognizedMode = null }
+    fun invalidateRecognition() {
+        recognizedStrokes = null; recognizedMode = null
+        reviewTokens = emptyList(); mathDraft = null; selectedGlyph = null
+    }
+    fun replaceInkSymbol(index: Int, symbol: String): Boolean {
+        val edit = InkReview.replace(reviewTokens, index, symbol) ?: return false
+        reviewTokens = edit.tokens
+        when (val layout = edit.layout) {
+            is MathLayoutResult.Draft -> {
+                mathDraft = layout; expression = layout.expression
+                notice = layout.warnings.joinToString(" ")
+            }
+            is MathLayoutResult.Rejected -> {
+                mathDraft = null; expression = ""
+                notice = layout.reason + " Your symbol choices are kept; correct another symbol or edit the expression."
+            }
+        }
+        selectedGlyph = null
+        return true
+    }
     fun commitInk(next: List<List<InkPoint>>): Boolean {
         val copy = InkEditHistory.snapshot(next)
         if (!history.record(strokes, copy)) return false
@@ -69,7 +90,7 @@ class InkWorkspace {
     private fun publishHistory() { canUndoInk = history.canUndo; canRedoInk = history.canRedo }
     fun clear() {
         strokes = emptyList(); resetInkHistory(); expression = ""
-        lineDraft = null; mathDraft = null; lineSymbols = emptyList()
+        lineDraft = null; mathDraft = null; reviewTokens = emptyList(); lineSymbols = emptyList()
         candidates = emptyList(); selectedGlyph = null; notice = null; inkBlocked = false
         recognizedStrokes = null; recognizedMode = null
         paperWidth = 0f; paperHeight = 0f; erase = false

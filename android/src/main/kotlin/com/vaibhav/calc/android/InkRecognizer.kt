@@ -110,6 +110,10 @@ object InkRecognizer {
         val width = points.maxOf { it.x } - points.minOf { it.x }
         val height = points.maxOf { it.y } - points.minOf { it.y }
         if (!width.isFinite() || !height.isFinite()) return emptyList()
+        // These disconnected shapes require all their strokes. Their mismatch score
+        // is a review cue, not a probability; the math reader also marks them uncertain.
+        if (InkSymbolGeometry.division(strokes)) return listOf(InkCandidate("÷", .04f))
+        if (InkSymbolGeometry.separateRoot(strokes)) return listOf(InkCandidate("√", .04f))
         val cloud = normalize(strokes)
         if(cloud.isEmpty()) return if (max(width, height) < .00001f) listOf(InkCandidate(".", 0f)) else emptyList()
         fun distance(a: List<InkPoint>, b: List<InkPoint>): Float = a.sumOf { p ->

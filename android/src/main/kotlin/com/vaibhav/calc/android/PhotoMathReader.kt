@@ -241,7 +241,14 @@ object PhotoMathReader {
             image.getPixels(pixels, 0, width, left, top, width, height)
             if (PhotoMathCorrections.hasRadicalProfile(width, height, pixels)) roots += index
         }
-        return PhotoMathCorrections.suggest(tokens, roots)
+        val system = MathEquationSystems.suggest(tokens)?.let { candidate ->
+            PhotoMathCorrection(candidate.expression,
+                "Read ${candidate.rows.size} separate rows as equations, preserving every symbol's row and layout. " +
+                    "Choose this only if the image shows one system; check every row, fraction and exponent. " +
+                    "Solving unsupported equations may still require manual work.")
+        }
+        return (listOfNotNull(system) + PhotoMathCorrections.suggest(tokens, roots))
+            .distinctBy { it.expression }.take(PhotoMathCorrections.MAX_CORRECTIONS)
     }
 
     /** Heuristic recovery of a printed rule omitted by OCR. Glyphs on both sides narrow

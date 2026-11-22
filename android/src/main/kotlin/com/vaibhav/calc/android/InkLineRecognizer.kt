@@ -61,6 +61,7 @@ object InkLineRecognizer {
             val detachedCap = if (group.size in 2..3) group.indices.firstOrNull { capIndex ->
                 InkRecognizer.detachedTopDigit(group[capIndex], group.filterIndexed { index, _ -> index != capIndex }) != null
             } else null
+            val division = InkSymbolGeometry.division(group)
             if (group.size >= 3) {
                 val parts = group.map { bounds(listOf(it)) }
                 val connected = mutableSetOf(0)
@@ -74,7 +75,7 @@ object InkLineRecognizer {
                         }) connected.add(next)
                     }
                 }
-                if (connected.size != parts.size && detachedCap == null)
+                if (connected.size != parts.size && detachedCap == null && !division)
                     return reject("Separate stacked marks are ambiguous. Use one line without fractions or superscripts.")
             }
             if (!dot && abs(box.centerY - center) > height * .3f)
@@ -97,7 +98,7 @@ object InkLineRecognizer {
                         return reject("A bar above symbol ${index + 1} is ambiguous. Complete its digit strokes or use Math layout for fractions and roots.")
                 }
             }
-            val supported = "0123456789.+−×/=()^xπ%!"
+            val supported = "0123456789.+−×/÷=()^xπ%!"
             if (raw.isNotEmpty() && raw.first().symbol !in supported)
                 return reject("Symbol ${index + 1} needs single-symbol mode. Radical bars and two-dimensional layouts are not supported in a line.")
             val candidates = raw.filter { it.symbol in supported }
