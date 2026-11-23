@@ -39,6 +39,9 @@ class PlottableFunction private constructor(
     private val env: Environment,
 ) {
 
+    /** Derivative certificates must use this curve's actual angle convention. */
+    internal val angleMode get() = settings.angle
+
     /** THE evaluation point. Everything in this package goes through here. */
     fun at(x: Num): Sample =
         when (val r = Evaluator(settings, env, mapOf(unknown to x)).eval(expr)) {

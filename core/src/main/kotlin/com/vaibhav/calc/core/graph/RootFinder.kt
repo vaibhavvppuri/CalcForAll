@@ -140,6 +140,10 @@ object RootFinder {
         f: PlottableFunction, xMin: Num, xMax: Num, sampleCount: Int, budget: SearchBudget,
     ): RootResult {
         if (!allowsNumericAnalysis(f,budget)) return budget.failed()
+        val direction = RootMonotonicity.direction(f.expr, f.unknown, f.angleMode,
+            { budget.constant(f, it) }, budget::check)
+        if (!budget.check()) return budget.failed()
+        if (direction != null) return monotonicRoots(f, xMin, xMax, direction, budget)
         val span = xMax - xMin
         val divisor = Num.of(sampleCount - 1)
         val candidates = LinkedHashMap<Num, Candidate>()
@@ -169,6 +173,30 @@ object RootFinder {
         return verifyAll(f, candidates.values.toList(),
             "numeric (bisection; absolute and relative residual checks; candidates assume continuity, not a completeness proof)",
             xMin, xMax, budget)
+    }
+
+    /** A strict derivative bound excludes extra roots between equal-sign endpoints. */
+    private fun monotonicRoots(
+        f: PlottableFunction, xMin: Num, xMax: Num, direction: Int, budget: SearchBudget,
+    ): RootResult {
+        val left = budget.sample(f, xMin) ?: return budget.failed()
+        val right = budget.sample(f, xMax) ?: return budget.failed()
+        if (left !is Sample.Defined || right !is Sample.Defined)
+            return unsupported("the monotonic root bracket endpoints could not both be evaluated as real values")
+        val leftSign = left.y.establishedSign("monotonic root endpoint sign")
+        val rightSign = right.y.establishedSign("monotonic root endpoint sign")
+        val method = "numeric (strict derivative enclosure; bisection; absolute and relative residual checks)"
+        if ((leftSign == 0 && rightSign == 0) ||
+            (direction > 0 && leftSign > rightSign) || (direction < 0 && leftSign < rightSign))
+            return unsupported("endpoint values could not confirm the strict monotonicity certificate")
+        val candidate = when {
+            leftSign == 0 -> Candidate(xMin, Num.ZERO)
+            rightSign == 0 -> Candidate(xMax, Num.ZERO)
+            leftSign == rightSign -> return RootResult.Found(emptyList(), method)
+            else -> bisect(f, left, right, budget) ?: return budget.failed()
+        }
+        // Even an exact endpoint zero is reevaluated by the existing verifier.
+        return verifyAll(f, listOf(candidate), method, xMin, xMax, budget)
     }
 
     /**

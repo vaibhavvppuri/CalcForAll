@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -45,47 +47,84 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
     var selectedGlyph by workspace::selectedGlyph
     var notice by workspace::notice
     var reading by remember { mutableStateOf(false) }
+    var rebuilding by remember { mutableStateOf(false) }
+    var readGeneration by remember { mutableLongStateOf(0L) }
+    var correctionGeneration by remember { mutableLongStateOf(0L) }
+    var correctionJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+    val expressionFocus = remember { FocusRequester() }
     var inkBlocked by workspace::inkBlocked
     var erasingGesture by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val lock = workspace.recognitionLock
-    LaunchedEffect(strokes, mode, current.isEmpty(), erasingGesture) {
-        val ink = strokes; val readingMode = mode
-        if (current.isNotEmpty() || erasingGesture) { reading = false; return@LaunchedEffect }
-        if (ink == workspace.recognizedStrokes && readingMode == workspace.recognizedMode) { reading = false; return@LaunchedEffect }
-        lineDraft = null; mathDraft = null; reviewTokens = emptyList(); selectedGlyph = null; candidates = emptyList()
+    val busy = reading || rebuilding
+    LaunchedEffect(workspace.inkRevision, mode, current.isEmpty()) {
+        correctionGeneration++; correctionJob?.cancel(); rebuilding = false
+    }
+    LaunchedEffect(strokes, mode, current.isEmpty(), erasingGesture, workspace.recognitionRequest, workspace.recognitionPaused) {
+        val generation = ++readGeneration
+        val ink = strokes; val readingMode = mode; val revision = workspace.inkRevision
+        val request = workspace.recognitionRequest
+        if (current.isNotEmpty() || erasingGesture || workspace.recognitionPaused) { reading = false; return@LaunchedEffect }
+        val sameInk = ink == workspace.recognizedStrokes && readingMode == workspace.recognizedMode
+        if (sameInk && request == workspace.recognizedRequest) { reading = false; return@LaunchedEffect }
+        val previousTokens = if (sameInk) reviewTokens.map { it.copy(alternatives = it.alternatives.toList()) } else emptyList()
+        val previousLine = if (sameInk) lineDraft else null
+        val previousLineSymbols = if (sameInk) lineSymbols.toList() else emptyList()
+        val retainReviewedText = workspace.expressionWasReviewed
+        val reviewedText = expression
+        if (!sameInk) {
+            lineDraft = null; mathDraft = null; reviewTokens = emptyList(); selectedGlyph = null; candidates = emptyList()
+        }
         if (ink.isEmpty()) { reading = false; return@LaunchedEffect }
         reading = true
-        if (mode != "One symbol") expression = ""
-        delay(650)
+        if (!sameInk && !retainReviewedText && mode != "One symbol") expression = ""
         try {
+            delay(650)
             val result = lock.withLock { withContext(Dispatchers.Default) {
                 when (readingMode) {
-                    "Math layout" -> MathInkRecognizer.readDetailed(ink)
+                    "Math layout" -> InkRecovery.retainExplicitChoices(previousTokens, MathInkRecognizer.readDetailed(ink))
                     "Spaced line" -> InkLineRecognizer.recognize(ink)
                     else -> InkRecognizer.recognize(ink)
                 }
             } }
-            if (strokes == ink && current.isEmpty() && mode == readingMode) {
+            if (generation == readGeneration && workspace.inkRevision == revision &&
+                !workspace.recognitionPaused && strokes == ink && current.isEmpty() && mode == readingMode) {
               when (result) {
                 is MathInkReading -> {
-                    reviewTokens = result.tokens
-                    when (val layout = result.layout) {
-                        is MathLayoutResult.Draft -> { mathDraft = layout; expression = layout.expression; notice = layout.warnings.joinToString(" ") }
-                        is MathLayoutResult.Rejected -> notice = layout.reason +
-                            if (result.tokens.isNotEmpty()) " Tap a numbered symbol to correct it; no partial expression is calculated." else ""
+                    if (sameInk && previousTokens.isNotEmpty() && result.tokens.isEmpty()) {
+                        notice = (result.layout as? MathLayoutResult.Rejected)?.reason.orEmpty() + " Your previous symbol choices are kept."
+                    } else {
+                        reviewTokens = result.tokens
+                        when (val layout = result.layout) {
+                            is MathLayoutResult.Draft -> { mathDraft = layout; expression = layout.expression; notice = layout.warnings.joinToString(" ") }
+                            is MathLayoutResult.Rejected -> {
+                                mathDraft = null; expression = ""
+                                notice = layout.reason + if (result.tokens.isNotEmpty()) " Tap a numbered symbol to correct it; no partial expression is calculated." else ""
+                            }
+                        }
                     }
                 }
-                is InkLineResult.Draft -> { lineDraft = result; lineSymbols = result.glyphs.map { it.candidates.first().symbol }; expression = result.text; notice = "Review the transcription. Tap a symbol for alternatives." }
-                is InkLineResult.Rejected -> notice = result.reason
+                is InkLineResult.Draft -> {
+                    lineDraft = result
+                    lineSymbols = if (previousLine != null && previousLineSymbols.size == result.glyphs.size)
+                        previousLineSymbols else result.glyphs.map { it.candidates.first().symbol }
+                    expression = lineSymbols.joinToString(""); notice = "Review the transcription. Tap a symbol for alternatives."
+                }
+                is InkLineResult.Rejected -> notice = result.reason + if (previousLine != null) " Your previous symbol choices are kept." else ""
                 is List<*> -> { candidates = result.filterIsInstance<InkCandidate>(); notice = "Choose the matching symbol to append it to the expression." }
               }
+              if (retainReviewedText) workspace.editExpression(reviewedText)
               workspace.recognizedStrokes = ink; workspace.recognizedMode = readingMode
+              workspace.recognizedRequest = request
             }
         } catch (e: CancellationException) { throw e }
-          catch (e: Exception) { notice = e.message ?: "The ink could not be read. Edit the expression below." }
-        finally { if (strokes == ink && mode == readingMode) reading = false }
+          catch (e: Exception) { if (generation == readGeneration) notice = e.message ?: "The ink could not be read. Edit the expression below." }
+        finally { if (generation == readGeneration) reading = false }
     }
+    val needsReview = workspace.needsExpressionReview
+    val recovery = if (!busy && !workspace.expressionWasReviewed) InkRecovery.guidance(
+        strokes.isNotEmpty(), mode, reviewTokens, mathDraft, lineDraft, workspace.reviewedLineSymbols) else null
     Surface(Modifier.fillMaxSize(), color = p.paper) {
         Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -99,11 +138,13 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Math layout", "Spaced line", "One symbol").forEach { item ->
-                    FilterChip(mode == item, onClick = { mode = item; notice = null }, enabled = !saving && !erasingGesture && current.isEmpty(), label = { Text(item) })
+                    FilterChip(mode == item, onClick = {
+                        workspace.changeMode(item)
+                    }, enabled = !saving && !erasingGesture && current.isEmpty(), label = { Text(item) })
                 }
             }
             Text(when (mode) {
-                "Math layout" -> "Leave gaps between symbols. Use raised powers or stacked fractions. Results appear after pen-up."
+                "Math layout" -> "Leave gaps between symbols. Use raised powers or stacked fractions. Clear readings calculate after pen-up; uncertain readings need your review."
                 "Spaced line" -> "Leave gaps between symbols on one line. Use Math layout for fractions and powers."
                 else -> "Write one digit or operator, choose its match, then write the next."
             }, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(vertical = 4.dp))
@@ -199,10 +240,14 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                         drawRect(if (selectedGlyph == index) p.blue else p.amber2, Offset(b.left - 4, b.top - 4), Size(b.width + 8, b.height + 8), style = Stroke(1.dp.toPx()))
                     }
                 }
-                (strokes + listOf(current)).forEach { path ->
+                fun drawPath(path: List<InkPoint>) {
                     if (path.size == 1) drawCircle(p.ink, 2.dp.toPx(), Offset(path[0].x, path[0].y))
-                    path.zipWithNext().forEach { (a, b) -> drawLine(p.ink, Offset(a.x, a.y), Offset(b.x, b.y), 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round) }
+                    for (index in 1 until path.size) {
+                        val a = path[index - 1]; val b = path[index]
+                        drawLine(p.ink, Offset(a.x, a.y), Offset(b.x, b.y), 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    }
                 }
+                strokes.forEach(::drawPath); drawPath(current)
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -222,28 +267,58 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                 TextButton(enabled = !saving && !erasingGesture && current.isEmpty() && strokes.isNotEmpty(), onClick = { workspace.commitInk(emptyList()); inkBlocked = false; if (mode != "One symbol") expression = ""; notice = null }) { Text("Clear pad") }
                 FilterChip(erase, enabled = !saving, onClick = { erase = !erase }, label = { Text("Eraser") })
             }
-            if (reading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                TextButton(enabled = !saving, onClick = {
+                    readGeneration++; correctionGeneration++; correctionJob?.cancel()
+                    workspace.pauseRecognition(); reading = false; rebuilding = false
+                    notice = "Reading stopped. Your ink and completed corrections are kept. Edit the expression or read again when ready."
+                }) { Text("Cancel reading") }
+            } else if (strokes.isNotEmpty()) {
+                TextButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = {
+                    notice = null; workspace.retryRecognition()
+                }) { Text("Read again") }
+            }
             notice?.let { Text(it, color = p.amber2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(vertical = 6.dp)) }
+            recovery?.let { advice ->
+                Text(advice.message, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(vertical = 6.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    advice.firstSymbol?.let { index ->
+                        TextButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = { selectedGlyph = index }) {
+                            Text("Review symbol ${index + 1}")
+                        }
+                    }
+                    TextButton(enabled = !saving && !erasingGesture && current.isEmpty(), onClick = { expressionFocus.requestFocus() }) { Text("Edit expression") }
+                }
+            }
             val symbols = if (reviewTokens.isNotEmpty()) reviewTokens.map { it.text } else if (lineDraft != null) lineSymbols else emptyList()
             if (symbols.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                symbols.forEachIndexed { index, symbol -> TextButton(enabled = !reading && !saving && !erasingGesture && current.isEmpty(), onClick = { selectedGlyph = index },
+                symbols.forEachIndexed { index, symbol -> TextButton(enabled = !busy && !saving && !erasingGesture && current.isEmpty(), onClick = { selectedGlyph = index },
                     modifier = Modifier.semantics { contentDescription = "Correct symbol ${index + 1}: $symbol" }) { Text("${index + 1}: $symbol") } }
             }
-            OutlinedTextField(expression, { if (it.length <= CalcSession.MAX_ENTRY_CHARS) { expression = it; inkBlocked = false } else { notice = "The pasted text is too long and was not inserted."; inkBlocked = true } }, enabled = !reading && !saving && !erasingGesture && current.isEmpty(),
-                keyboardOptions = MathKeyboard, label = { Text("Expression · edit to correct") }, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+            OutlinedTextField(expression, { if (!workspace.editExpression(it)) { notice = "The pasted text is too long and was not inserted."; inkBlocked = true } }, enabled = !busy && !saving && !erasingGesture && current.isEmpty(),
+                keyboardOptions = MathKeyboard, label = { Text("Expression · edit to correct") }, modifier = Modifier.fillMaxWidth().focusRequester(expressionFocus), maxLines = 4)
+            if (needsReview && !busy) {
+                Text("Some symbols have more than one possible reading. Check the expression before calculating; no answer is selected for you.",
+                    color = p.amber2, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 8.dp))
+                OutlinedButton(enabled = !saving && !erasingGesture && current.isEmpty() && !inkBlocked,
+                    onClick = { workspace.acknowledgeExpression() }, shape = MaterialTheme.shapes.medium) {
+                    Text("I checked the expression · calculate")
+                }
+            }
             Text("Apply a function to this expression, or start typed entry if empty", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                 listOf("sqrt", "sin", "cos", "tan", "ln", "log", "abs").forEach { function ->
-                    TextButton(enabled = !reading && !saving && !erasingGesture && current.isEmpty(), onClick = {
+                    TextButton(enabled = !busy && !saving && !erasingGesture && current.isEmpty(), onClick = {
                         val changed = if (expression.isBlank()) "$function(" else "$function($expression)"
                         if (changed.length <= RecognitionCalculator.MAX_CHARS) {
-                            expression = changed; inkBlocked = false
+                            workspace.transformExpression(changed)
                         } else notice = "The expression is full. Shorten it before adding a function."
                     }) { Text(function) }
                 }
             }
             Text("${settings.angle.name} · New ink replaces the draft. Cursive and unclear symbols need correction.", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
-            RecognitionAnswer(expression, settings, environment, enabled = !reading && current.isEmpty() && !erasingGesture && !inkBlocked, saving = saving, onSave = onUse)
+            RecognitionAnswer(expression, settings, environment, enabled = !busy && current.isEmpty() && !erasingGesture && !inkBlocked && !needsReview, saving = saving, onSave = onUse)
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -253,10 +328,24 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
             ?: lineDraft?.glyphs?.getOrNull(index)?.candidates?.map { it.symbol }.orEmpty()
         val palette = if (token != null) InkReview.symbols else InkReview.lineSymbols
         fun choose(symbol: String) {
-            if (token != null) workspace.replaceInkSymbol(index, symbol)
-            else if (index in lineSymbols.indices && symbol in palette) {
-                lineSymbols = lineSymbols.toMutableList().also { it[index] = symbol }
-                expression = lineSymbols.joinToString(""); selectedGlyph = null
+            if (saving || busy || erasingGesture || current.isNotEmpty()) return
+            if (token != null) {
+                val revision = workspace.inkRevision
+                val expected = reviewTokens.map { it.copy(alternatives = it.alternatives.toList()) }
+                val readingMode = mode
+                val generation = ++correctionGeneration
+                selectedGlyph = null; rebuilding = true
+                correctionJob = scope.launch {
+                    try {
+                        val edit = lock.withLock { withContext(Dispatchers.Default) { InkReview.replace(expected, index, symbol) } }
+                        if (edit != null && generation == correctionGeneration && current.isEmpty() && mode == readingMode)
+                            workspace.applyInkEdit(revision, expected, edit)
+                    } catch (e: CancellationException) { throw e }
+                      catch (e: Exception) { if (generation == correctionGeneration) notice = "That correction could not be applied. Your previous choices are kept; edit the expression instead." }
+                    finally { if (generation == correctionGeneration) rebuilding = false }
+                }
+            } else {
+                workspace.replaceLineSymbol(index, symbol)
             }
         }
         if (token != null || options.isNotEmpty()) AlertDialog(onDismissRequest = { if (!saving) selectedGlyph = null },
@@ -266,14 +355,14 @@ fun HandwritingScreen(settings: Settings, environment: Environment, workspace: I
                 if (options.isNotEmpty()) {
                     Text("Suggested matches", modifier = Modifier.padding(top = 12.dp))
                     Row(Modifier.horizontalScroll(rememberScrollState())) {
-                        options.forEach { symbol -> TextButton(enabled = !saving && !reading, onClick = { choose(symbol) },
+                        options.forEach { symbol -> TextButton(enabled = !saving && !busy && current.isEmpty() && !erasingGesture, onClick = { choose(symbol) },
                             modifier = Modifier.semantics { contentDescription = "Suggested symbol $symbol" }) { Text(symbol, fontSize = 24.sp) } }
                     }
                 }
                 Text("Choose another symbol", modifier = Modifier.padding(top = 8.dp))
                 palette.chunked(5).forEach { row ->
                     Row(Modifier.fillMaxWidth()) {
-                        row.forEach { symbol -> TextButton(enabled = !saving && !reading, onClick = { choose(symbol) },
+                        row.forEach { symbol -> TextButton(enabled = !saving && !busy && current.isEmpty() && !erasingGesture, onClick = { choose(symbol) },
                             modifier = Modifier.weight(1f).semantics { contentDescription = "Replace with $symbol" },
                             contentPadding = PaddingValues(0.dp)) { Text(symbol, fontSize = 22.sp) } }
                     }

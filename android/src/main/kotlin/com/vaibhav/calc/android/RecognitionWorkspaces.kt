@@ -37,14 +37,73 @@ class InkWorkspace {
     var inkBlocked by mutableStateOf(false)
     var recognizedStrokes: List<List<InkPoint>>? = null
     var recognizedMode: String? = null
+    var recognizedRequest: Long = -1L
+    var recognitionPaused by mutableStateOf(false)
+        private set
+    var recognitionRequest by mutableLongStateOf(0L)
+        private set
+    var inkRevision by mutableLongStateOf(0L)
+        private set
+    var reviewedLineSymbols by mutableStateOf<Set<Int>>(emptySet())
+        private set
+    private var expressionReview by mutableStateOf<InkExpressionReview?>(null)
+    val expressionWasReviewed: Boolean
+        get() = expressionReview?.matches(inkRevision, mode, expression, reviewTokens, lineSymbols) == true
+    val needsExpressionReview: Boolean
+        get() = expression.isNotBlank() && !expressionWasReviewed && when (mode) {
+            "Math layout" -> InkRecovery.unclearMathSymbols(reviewTokens).isNotEmpty()
+            "Spaced line" -> InkRecovery.unclearLineSymbols(lineDraft, reviewedLineSymbols).isNotEmpty()
+            else -> false // Single-symbol mode already requires an explicit candidate tap.
+        }
     var paperWidth by mutableFloatStateOf(0f)
     var paperHeight by mutableFloatStateOf(0f)
+    /** A mode change rereads the drawing; it must not reclassify old machine text as a chosen symbol. */
+    fun changeMode(next: String): Boolean {
+        if (next !in listOf("Math layout", "Spaced line", "One symbol") || next == mode) return false
+        expression = ""
+        mode = next
+        invalidateRecognition()
+        notice = null
+        return true
+    }
     fun invalidateRecognition() {
+        inkRevision++
+        recognitionPaused = false
+        expressionReview = null; reviewedLineSymbols = emptySet()
         recognizedStrokes = null; recognizedMode = null
         reviewTokens = emptyList(); mathDraft = null; selectedGlyph = null
+        lineDraft = null; lineSymbols = emptyList(); candidates = emptyList()
+        if (mode != "One symbol") expression = ""
+    }
+    fun pauseRecognition() { recognitionPaused = true; selectedGlyph = null }
+    fun retryRecognition() { recognitionPaused = false; recognitionRequest++ }
+    fun acknowledgeExpression(): Boolean {
+        val reviewed = InkExpressionReview.capture(inkRevision, mode, expression, reviewTokens, lineSymbols) ?: return false
+        expressionReview = reviewed
+        return true
+    }
+    fun editExpression(text: String): Boolean {
+        if (text.length > RecognitionCalculator.MAX_CHARS) return false
+        expression = text; inkBlocked = false
+        expressionReview = null
+        acknowledgeExpression()
+        return true
+    }
+    /** Wrapping uncertain machine text is not an acknowledgment of its glyphs. */
+    fun transformExpression(text: String): Boolean {
+        if (text.length > RecognitionCalculator.MAX_CHARS) return false
+        val retainReview = expressionWasReviewed || expression.isBlank()
+        expression = text; inkBlocked = false; expressionReview = null
+        if (retainReview) acknowledgeExpression()
+        return true
     }
     fun replaceInkSymbol(index: Int, symbol: String): Boolean {
         val edit = InkReview.replace(reviewTokens, index, symbol) ?: return false
+        return applyInkEdit(inkRevision, reviewTokens, edit)
+    }
+    internal fun applyInkEdit(expectedRevision: Long, expectedTokens: List<MathToken>, edit: InkReview.Edit): Boolean {
+        if (inkRevision != expectedRevision || reviewTokens != expectedTokens) return false
+        expressionReview = null
         reviewTokens = edit.tokens
         when (val layout = edit.layout) {
             is MathLayoutResult.Draft -> {
@@ -57,6 +116,13 @@ class InkWorkspace {
             }
         }
         selectedGlyph = null
+        return true
+    }
+    fun replaceLineSymbol(index: Int, symbol: String): Boolean {
+        if (mode != "Spaced line" || lineDraft == null || index !in lineSymbols.indices || symbol !in InkReview.lineSymbols) return false
+        lineSymbols = lineSymbols.toMutableList().also { it[index] = symbol }
+        reviewedLineSymbols = reviewedLineSymbols + index
+        expression = lineSymbols.joinToString(""); expressionReview = null; selectedGlyph = null
         return true
     }
     fun commitInk(next: List<List<InkPoint>>): Boolean {
@@ -89,6 +155,7 @@ class InkWorkspace {
     fun resetInkHistory() { history.clear(); publishHistory() }
     private fun publishHistory() { canUndoInk = history.canUndo; canRedoInk = history.canRedo }
     fun clear() {
+        invalidateRecognition()
         strokes = emptyList(); resetInkHistory(); expression = ""
         lineDraft = null; mathDraft = null; reviewTokens = emptyList(); lineSymbols = emptyList()
         candidates = emptyList(); selectedGlyph = null; notice = null; inkBlocked = false
@@ -98,7 +165,8 @@ class InkWorkspace {
 }
 
 data class PhotoRenderRequest(val region: PhotoRegion, val quarterTurns: Int,
-                              val treatment: PhotoImageTreatment = PhotoImageTreatment.ORIGINAL)
+                              val treatment: PhotoImageTreatment = PhotoImageTreatment.ORIGINAL,
+                              val geometry: PhotoGeometryAdjustment = PhotoGeometryAdjustment.NONE)
 
 class PhotoWorkspace {
     var source by mutableStateOf<PhotoSource?>(null)
@@ -106,10 +174,15 @@ class PhotoWorkspace {
     var region by mutableStateOf(PhotoRegion.FULL)
     var quarterTurns by mutableIntStateOf(0)
     var treatment by mutableStateOf(PhotoImageTreatment.ORIGINAL)
+    var geometry by mutableStateOf(PhotoGeometryAdjustment.NONE)
+    var geometryEditing by mutableStateOf(false)
+    var geometryDraft by mutableStateOf(PhotoGeometryAdjustment.NONE)
+    var geometryPreview by mutableStateOf<Bitmap?>(null)
     var text by mutableStateOf("")
     var recognizedText by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
     var warnings by mutableStateOf<List<String>>(emptyList())
+    var imageAdvice by mutableStateOf<List<String>>(emptyList())
     var corrections by mutableStateOf<List<PhotoMathCorrection>>(emptyList())
     var editRejected by mutableStateOf(false)
     var needsRead by mutableStateOf(false)
@@ -121,7 +194,9 @@ class PhotoWorkspace {
     fun clear() {
         revision++
         source = null; bitmap = null; region = PhotoRegion.FULL; quarterTurns = 0; treatment = PhotoImageTreatment.ORIGINAL
-        text = ""; recognizedText = ""; error = null; warnings = emptyList(); corrections = emptyList()
+        geometry = PhotoGeometryAdjustment.NONE
+        geometryEditing = false; geometryDraft = PhotoGeometryAdjustment.NONE; geometryPreview = null
+        text = ""; recognizedText = ""; error = null; warnings = emptyList(); imageAdvice = emptyList(); corrections = emptyList()
         editRejected = false; needsRead = false; pendingRender = null; crop = false; cropX = 0f..1f; cropY = 0f..1f
     }
 }

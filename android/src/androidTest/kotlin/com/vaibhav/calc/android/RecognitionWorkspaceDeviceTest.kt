@@ -25,7 +25,12 @@ class RecognitionWorkspaceDeviceTest {
                 before.photo.recognizedText = "V16"
                 before.photo.region = PhotoRegion(.1, .2, .8, .9)
                 before.photo.treatment = PhotoImageTreatment.CONTRAST
-                before.photo.pendingRender = PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST)
+                before.photo.geometry = PhotoGeometryAdjustment(straightenDegrees = 6.0)
+                before.photo.geometryEditing = true
+                before.photo.geometryDraft = PhotoGeometryAdjustment(PhotoQuad.FULL.copy(topLeft = PhotoPoint(.1, .15)), -4.5)
+                before.photo.geometryPreview = picture
+                before.photo.imageAdvice = listOf("Try better lighting")
+                before.photo.pendingRender = PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST, before.photo.geometry)
                 before.saving = true
                 before.saveError = "A retained test notice"
             }
@@ -46,7 +51,12 @@ class RecognitionWorkspaceDeviceTest {
                 assertEquals("V16", after.photo.recognizedText)
                 assertEquals(PhotoRegion(.1, .2, .8, .9), after.photo.region)
                 assertEquals(PhotoImageTreatment.CONTRAST, after.photo.treatment)
-                assertEquals(PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST), after.photo.pendingRender)
+                assertEquals(PhotoGeometryAdjustment(straightenDegrees = 6.0), after.photo.geometry)
+                assertTrue(after.photo.geometryEditing)
+                assertEquals(PhotoGeometryAdjustment(PhotoQuad.FULL.copy(topLeft = PhotoPoint(.1, .15)), -4.5), after.photo.geometryDraft)
+                assertSame(picture, after.photo.geometryPreview)
+                assertEquals(listOf("Try better lighting"), after.photo.imageAdvice)
+                assertEquals(PhotoRenderRequest(PhotoRegion(.2, .3, .7, .8), 1, PhotoImageTreatment.INVERT_CONTRAST, after.photo.geometry), after.photo.pendingRender)
                 assertTrue(after.saving)
                 assertEquals("A retained test notice", after.saveError)
                 after.saving = false
@@ -54,6 +64,8 @@ class RecognitionWorkspaceDeviceTest {
         } finally { scenario.close() }
         assertNull(before.photo.bitmap)
         assertNull(before.photo.pendingRender)
+        assertNull(before.photo.geometryPreview)
+        assertFalse(before.photo.geometryEditing)
         assertTrue(before.ink.strokes.isEmpty())
         assertFalse(before.ink.canUndoInk)
         assertFalse(before.ink.canRedoInk)

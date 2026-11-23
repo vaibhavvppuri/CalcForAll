@@ -1,3 +1,112 @@
+# CalcForAll — Version 2.0 application validation passed
+
+**Status on 15 November 2026, India time:** **Version 2.0 application validation passed**, with Android version code **9**, continuing development candidate `395f721`. The fresh forced offline host gate passed **1,521 tests**, lint and APK/API assembly; artifact signature/permissions, static native-library and notice audits passed, as did **19/19 packaged-API smoke checks**. The exact same APK and test APK passed **34/34 native checks on each of API 23 and API 34**, offline before and after. Combined device QA passed with **ten API 23 and nine API 34 manual observations**. Source/distribution archive identities, package integrity and the final file scan are separate release receipts, not inferred from these application checks. Earlier development labels, candidate failures and release records remain unchanged below; the public renaming does not rewrite them.
+
+## Fresh host gate and artifact identity
+
+| Check | Current result | Evidence |
+| --- | ---: | --- |
+| Core tests | **1,053 / 84 suites** | Fresh JUnit XML |
+| Android local unit tests | **390 / 48 suites** | Fresh JUnit XML |
+| API tests | **69 / 4 suites** | Fresh JUnit XML |
+| Battery harness tests | **9 / 4 suites** | Fresh JUnit XML |
+| Combined host receipts | **1,521; 0 failures, errors or skips** | `artifact-final-summary.json` |
+| Forced offline Gate2 | **BUILD SUCCESSFUL, 11m 30s; 91/91 actionable tasks executed** | `all-modules-2.log` |
+| Battery case records | **1,910 PASS, 110 PROBE, 0 FAIL** | Fresh B1/B2/B3 records; PROBE is exploratory |
+| Core Android-import boundary | **161 files; no Android imports** | Gate2 |
+| Android lint | **0 errors, 4 warnings, 4 informational findings** | Fresh analysis and report |
+| Packaged API smoke | **19/19; owned JVM stopped** | `api-2.3-smoke-final.json`, internal work filename retained |
+
+The completed command used `--offline --no-daemon --console=plain --rerun-tasks` with `:core:check`, `:android:testDebugUnitTest`, `:android:lintDebug`, both debug APK assembly tasks, `:api:test`, `:api:distZip` and `:battery:test`. Unlike the preceding candidate's partly up-to-date gate, all 91 actionable tasks executed. The current receipts do not borrow prior test results or a stale lint report. Lint's remaining findings are state autoboxing, a monochrome launcher icon and version-catalog suggestions; zero lint errors does not mean zero findings.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `android-debug.apk` — Version 2.0 / code 9 | 56,159,181 | `68d8c6f9c06497d9a5e444679ee1c864b866be0e3f76c3f782445d1c656af51c` |
+| `android-debug-androidTest.apk` | 498,755 | `5b45640122ddb76b1dec485a638a498bd0cd98325d0af5f77a8389c8bf4fc1d3` |
+| `api-2.0.zip` | 10,730,799 | `8525a53994090a6edcc42058a2f482716d7954c4a4181ba0f58f79aaaf93aeef` |
+
+These are build-artifact identities. The public delivery uses `CalcForAll - Version 2.0.apk`, `CalcForAll - Version 2.0 - Source.zip`, `CalcForAll - Version 2.0 - Local API.zip` and `CalcForAll - Version 2.0 - Verification.zip`. Their final identities and source/evidence archive integrity are established separately by the release manifest and package audit; no archive pass is inferred here.
+
+## What the new tests establish
+
+**Ink recovery:** all **16 `InkRecoverySpec` cases** passed. Independently drawn `1+1` still produces an automatic result, while actual dotted-division grouping is marked uncertain and needs explicit review. Tests cover authoritative typed correction, atomic oversized-paste refusal, immutable review snapshots, same-drawing explicit-choice retention, pause/retry, per-symbol uncertainty, stale revisions and stale token sets. Changing modes cannot turn uncertain Math layout output into an approved One symbol expression; repeated taps and the normal One symbol accumulator remain intact. Wrapping an uncertain expression with a function cannot approve its glyphs. Symbol reconstruction runs in a background lane with guards against publishing onto newer ink. These are bounded algorithm/state tests, not measured general handwriting accuracy or a physical stylus trial. The additional native workspace/recreation case passed on both API levels; actual manual review, retry and mode-change observations on API 23 are scoped below.
+
+**Photo preparation:** **8 `PhotoGeometrySpec`, 4 `PhotoQualitySpec` and 2 `PhotoGeometryWorkspaceSpec` cases** passed. Independent projective coordinates, selected boundaries, both rotation signs, clockwise selection remapping, crossed/concave/tiny/nonfinite refusals, fixed sampling budgets and retained unapplied/pending choices are covered. Explicit four-corner correction and ±20° straightening use retained source detail, before image treatment; corrected output has a 2,048-pixel edge cap. Aspect ratio is estimated from photographed sides, not calibrated. Low-contrast/darkness/soft-edge messages are nonblocking heuristics, not blur diagnoses or OCR probabilities. Two new native pixel/OCR geometry cases passed on both API levels; these controlled synthetic fixtures do not establish real-photo recognition accuracy.
+
+**Numerical root search:** all **10 `RootMonotonicitySpec` cases** passed, including an independently enclosed DEG `cos(x)=x` root with a 64-evaluation cap, exact endpoints, strict same-sign no-root cases, derivative intervals touching zero, an oscillating five-root case, uncertain versus known-point coefficients, actual curve angle context, contextual percent and domain refusals. After unchanged continuity preflight, an optional directed derivative enclosure supports bounded addition/subtraction, constant scaling/division and nested sin/cos with the actual DEG/RAD/GRAD chain factor. A strictly signed derivative allows established endpoint signs to avoid a full scan; otherwise the existing scan remains. Precision, the default **5,000 ms** time allowance, evaluation limits, bisection and absolute/relative residual checks are unchanged. The general finite scan still does not prove completeness or guarantee discovery of close/tangent roots.
+
+## Focused desktop root-search observation
+
+`root-search-comparison.json` records one cold and one warm observation per implementation on the same desktop JVM, for DEG `cos(x)-x` over `[0,2]`, precision 40, 200 configured samples and the unchanged five-second budget:
+
+| Observation | Before | After |
+| --- | ---: | ---: |
+| Cold elapsed | 1,203.611 ms | 118.735 ms |
+| Cold thread-allocated bytes | 25,427,840 | 11,614,880 |
+| Warm elapsed | 84.610 ms | 17.608 ms |
+| Warm thread-allocated bytes | 22,434,528 | 8,557,672 |
+| Separate 64-evaluation-cap run | Budget refusal | Completed with verified candidate |
+
+These are small, non-statistical host observations, **not Android timing, broad app speed, or a diagnosed cause of earlier emulator failures**. Allocation values are per-thread allocated bytes, not retained memory or the device's footprint. Exact successful evaluation counts are not exposed; success under the 64-call cap establishes an upper bound only. Both successful implementations reported a root near `0.999847741531` with checked residuals. The probe used the compiled core produced before the interrupted first gate; the later full Gate2 independently compiled and tested the final source.
+
+## Artifact audits, warnings and interrupted attempt
+
+`apk-security-final.json` binds the exact APK above to successful v1/v2 verification with one **Android Debug** signer. It is a development signing identity, not Play Store production signing. The merged APK has no `INTERNET` permission; its only declared/used application permission is `com.vaibhav.calc.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Signature warnings remain in the raw report; these checks are not a malware guarantee.
+
+The static native-library audit inspected four bundled libraries without executing them. Both 64-bit libraries satisfy the checked ZIP/ELF/RELRO 16 KB alignment rules; the two retained 32-bit libraries do not satisfy the same ELF 16 KB criterion and remain listed in the report. Passing this scoped static audit does not establish execution on a 16 KB-page Android runtime. The notice audit matched **36 APK legal assets, 38 API notice files and 21 external API JARs**, plus the desugaring corresponding-source archive. Third-party terms remain intact.
+
+The packaged API smoke used the actual `api-2.0.zip`, default loopback binding and a bounded Java heap. Its **19 checks passed**; the owned JVM was stopped and temporary extraction removed. Loopback HTTP reachability was checked; no separate operating-system socket-table inspection was performed.
+
+Gate1 was **deliberately interrupted**, not a completed failing test gate: independent review found that switching uncertain ink into One symbol could clear its provenance while retaining the text. The narrow fix and two regressions were applied before fresh Gate2. Buffered output shows `:core:jar` completed before interruption; no full test or Android gate verdict existed. `all-modules-1-interruption.json` preserves the stop and its phase clarification.
+
+The successful build also reports a Kotlin warning for the private primary constructor of the `InkExpressionReview` data class being exposed through generated `copy()`. The repository pins Kotlin **2.1.0**; the warning says the visibility change becomes an error in Kotlin 2.2. It is an upgrade compatibility item, distinct from the four lint warnings and from an observed runtime defect. The raw build log also retains its multiple-Kotlin-daemon-session warning.
+
+## Completed native checks and nineteen manual observations
+
+The first current-APK API 23 run, **`20261115T111259105Z-ff08be17`**, completed **34/34 tests with no failure**. The receipt identifies the installed app and instrumentation bytes above, **216 source/build inputs**, actual Android **6.0 / API 23**, and network state before and after: no active default network, Wi-Fi `0`, mobile data `0`. This includes the unchanged default tool-catalogue assertions, ink recovery/recreation and new native photo geometry cases. The numerical range-search gate that failed in the preceding candidate passed in this run; that single emulator result is not a physical-device or general performance guarantee.
+
+Instrumentation itself reports **117.982 seconds**; the ADB instrumentation command interval was **118.757 seconds**, and the complete runner interval was **154.707 seconds**. The launch requested **768 MiB**, while actual guest `/proc/meminfo` reported **1,019,908 KiB**; requested memory is not reported as observed allocation. The renderer was **Google SwiftShader**. Raw receipt/log names are `android-device-api23-run-20261115T111259105Z-ff08be17.json` and its `.log`; the current latest aliases retain the same verdict.
+
+The runner exported the actual API 23 **eight-image synthetic photo corpus**, with **four automatic matches and four assisted-only matches**. Offered corrections supplied the integer/decimal root, raised-power and equation-system matches; those are separate from automatic transcription. `photo-corpus-api23-final.json` has SHA-256 **`ae15feabb4addcf2be284d0979e25cebad5daefa0c819eb3409546eb6d869481`**, bound in the completed native receipt. The corpus is an exploratory controlled fixture set, not a representative OCR accuracy benchmark.
+
+The same APK has **ten API 23 manual observations** in `manual-qa-input.json`, each paired with a PNG and UI XML. Font scale was **1.3**. The ledger records these actual workflows:
+
+| Observations | What was exercised |
+| --- | --- |
+| 1 — cold default root | Force-stop/restart, then Equation solver → Numeric on a range with unchanged DEG `cos(x)=x`, bounds 0/2, before another calculation. The UI showed `x≈0.999847741531` and original-equation verification without a timeout. Separate UI timing includes ADB/dump overhead, not engine-only latency. |
+| 2–4 — angle draft, applied read and visible geometry | Picker-imported synthetic 17° clockwise image; selected −17° and closed before applying; reopening retained that draft. Applying reread the displayed pixels and produced `12+34 → 46` without typing the expression. Recorded raster inspection confirmed horizontal, complete, unclipped symbols. Baseline OCR already read 46, so no recognition-accuracy gain is inferred. |
+| 5–6 — one save, clear and restart | One reviewed save increased history 12→13; reopening showed no photo/expression/geometry draft. Force-stop/restart retained history 13 and `12+34`. Editing and reading had not added rows. |
+| 7–8 — uncertain real input and explicit review | Five ADB touch strokes drew `1÷1` directly on the visible pad. Recognition proposed `1/1`, identified uncertain symbol 2 and withheld the answer. One explicit review action produced 1 without typed substitution. This is simulated finger input, not a physical stylus test. |
+| 9 — same-drawing retry | Read again retained the drawing, `1/1`, explicit review and result 1; no duplicate save was issued. |
+| 10 — reopen and mode transition | After reopening the reviewed draft, changing Math layout to One symbol retained the drawing but emptied the expression and offered fresh choices. Old machine text did not become approved by changing modes. |
+
+The paired files include `v23-api23-final-cold-root`, the angle/straightened-preview/result images, photo save/restart images, and the uncertain/reviewed/reread/mode ink captures under the evidence's `device/` directory. `api23-manual-network-after.json` records the actual offline state after these observations, and the owned API 23 emulator was stopped.
+
+The API 34 run **`20261115T114305920Z-a56e84d1`** also passed **34/34**, using the same installed app/test APK hashes and the same **216 source/build inputs**. The receipt confirms Android **14 / API 34**, no active default network, Wi-Fi `0` and mobile data `0` both before and after the tests. Instrumentation reports **122.103 seconds**; the command interval was **128.976 seconds**, and the full runner took **206.027 seconds**. The launch requested **1,024 MiB**, while actual guest MemTotal was **2,534,552 KiB**. Its observed renderer was **Android Emulator OpenGL ES Translator / Intel UHD Graphics**. These differing configurations are recorded, not treated as a controlled device-speed comparison.
+
+API 34's separately exported eight-image synthetic corpus also records **four automatic and four assisted-only matches**, with SHA-256 **`67204362f91143a8fb28fe877850315220624e59fe459af05c7bb9a901236d1a`** for `photo-corpus-api34-final.json`, bound in the completed native receipt. Both corpus observations use the actual OCR output and offered corrections; neither is an eight-of-eight automatic-recognition claim.
+
+API 34 has **nine recorded manual observations** on the same APK, each paired with a PNG and UI XML:
+
+| Observations | What was exercised |
+| --- | --- |
+| 1 — cold default root | Force-stop/restart, then the unchanged DEG `cos(x)=x` range operation over 0/2 before another calculation. The UI displayed `x≈0.999847741531` with original-equation verification and no timeout. |
+| 2–3 — four-corner correction and visible preview | Imported a synthetic slanted page and placed all four handles on the actual paper corners. The selected outline and corrected image were visually inspected. Apply reread complete, level `12+34` and produced 46 without typed substitution. Baseline OCR already read 46; this verifies geometry/display behavior, not improved recognition accuracy. |
+| 4–5 — invalid selection and cancellation | Moving top-left beyond bottom-right produced a crossed/folded selection. Apply refused it with an explanation and kept the earlier valid draft. Cancelling returned to the previous corrected image and `12+34 = 46`, without committing a distorted replacement or saving history. |
+| 6–7 — quality advice and visible contrast treatment | A controlled foreground-212/background-236 image displayed low-contrast recovery advice. Explicit Boost contrast produced a visibly clear, complete preview and an OCR result of 46. This is one synthetic fixture, not a blur diagnosis or general low-light result. |
+| 8–9 — incomplete expression and typed fallback | A `12+` image was transcribed as `12+` and refused with unexpected end of input: no result and no Save action. Type expression instead focused the retained draft. Explicitly typing `12+34` then produced 46 and restored reviewed Save. That correction is manual entry, not automatic OCR completion or recovery of missing pixels. |
+
+`device-final-qa.json` passed against the exact APK hash above and both complete native receipts. All **19 manual PNG hashes** match its entries and all paired UI XML files exist. `api23-manual-network-after.json` and `api34-manual-network-after.json` each confirm no active default network, Wi-Fi `0` and mobile data `0` after the manual work. Both owned emulators were stopped; no build/API JVM was left running. The controlled fixture images and their generation script are provenance material, not a representative accuracy dataset or turnkey portable automation.
+
+`release-helper-selftests-final.json` separately records **37 passing Python helper cases**: 26 validator and 11 manual-support checks, with process exits, captured output and unchanged source hashes. No JVM or packaging ran in that check. These cases are **not included in the 1,521 application host tests**. Application/helper validation does not substitute for the release manifest, source/blob/archive checks, package audit or final file-scan receipt. Those distribution checks are recorded outside the source snapshot so packaging does not require rewriting the source it is verifying.
+
+Recognition remains bounded template/geometry matching plus bundled printed-text OCR. It can misread valid expressions, and complete raw review or explicit corrections are separate from automatic matches. No unrestricted cursive, arbitrary page/word-problem or full-CAS claim is made. Physical phones, physical styluses, TalkBack, a 16 KB-page runtime and representative recognition-accuracy evaluation remain untested. Unsaved drafts are memory-only; saved calculation history is the durable path.
+
+The entire previous verification file is preserved byte-for-byte below. External `verification-historical-tail.json` records its **158,416 bytes** and SHA-256 **`b7735fa731831784ca16809ed0d74134c7eb5d775fb3f3693c3c6deeaba3114d`** before this prepend. All prior failed-candidate verdicts remain historical facts for their own artifacts.
+
+---
+
+
 # CalcForAll 2.3.0 candidate — strict release acceptance blocked
 
 **Status on 15 November 2026, India time:** Android and local API version `2.3.0`; Android version code **8**; baseline delivered 2.2 source `8dc315d`. Gate2 accepted **1,481 clean host tests**, fresh lint analysis and the replacement APK. Current artifact audits passed; the unchanged packaged API retains **19/19 smoke checks**. The final manual ledger records **four API23 and five API34 observations**, but **three full API23 runs and the completed API34 host-renderer run each passed 30/31**, with the same default DEG `cos(x)=x` numerical root-search time-budget failure. All photo/ink cases passed individually. **Strict release acceptance is blocked: `releaseAccepted=false`.** This is a candidate-only handoff; the release gates are unchanged. First-candidate results below refer only to their superseded APK, and source/archive integrity is separate from release acceptance. The complete 2.2 and earlier records below remain unchanged.

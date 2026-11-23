@@ -13,6 +13,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +57,10 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
     var orientationImage by remember { mutableStateOf<Bitmap?>(null) }
     var searchingOrientations by remember { mutableStateOf(false) }
     var orientationPass by remember { mutableIntStateOf(1) }
+    var adjustingGeometry by workspace::geometryEditing
+    var geometryPreview by workspace::geometryPreview
+    var geometryDraft by workspace::geometryDraft
+    val expressionFocus = remember { FocusRequester() }
 
     fun applyDraft(draft: PhotoMathDraft) {
         recognizedText = draft.completeRawText
@@ -82,10 +88,19 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
         if (!replacing) workspace.needsRead = true
         job = scope.launch {
             var published = false
+            var stagedAdvice = emptyList<String>()
             try {
-                val image = PhotoStaging.prepare(ticket, { revision }, imageOperation) { prepared ->
+                val image = PhotoStaging.prepare(ticket, { revision }, {
+                    val prepared = imageOperation()
+                    stagedAdvice = withContext(Dispatchers.Default) {
+                        val coroutine = currentCoroutineContext()
+                        PhotoImageQuality.assess(prepared) { !coroutine.isActive }.messages
+                    }
+                    prepared
+                }) { prepared ->
                     publish()
                     bitmap = prepared
+                    workspace.imageAdvice = stagedAdvice
                     text = ""; recognizedText = ""; warnings = emptyList(); corrections = emptyList(); editRejected = false
                     workspace.needsRead = true; published = true; scrollAfterRead = true
                 } ?: return@launch
@@ -107,18 +122,49 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
         }
     }
     fun read(image: Bitmap) { workspace.pendingRender = null; start { image } }
-    fun render(region: PhotoRegion, turns: Int, treatment: PhotoImageTreatment = workspace.treatment) {
+    fun render(region: PhotoRegion, turns: Int, treatment: PhotoImageTreatment = workspace.treatment,
+               geometry: PhotoGeometryAdjustment = workspace.geometry) {
         val source = workspace.source ?: return
-        workspace.pendingRender = PhotoRenderRequest(region, turns, treatment)
+        workspace.pendingRender = PhotoRenderRequest(region, turns, treatment, geometry)
         start(publish = {
             workspace.region = region; workspace.quarterTurns = PhotoCropGeometry.turns(turns)
-            workspace.treatment = treatment; crop = false; workspace.pendingRender = null
+            workspace.treatment = treatment; workspace.geometry = geometry
+            crop = false; adjustingGeometry = false; geometryPreview = null; workspace.pendingRender = null
         }) {
             withContext(Dispatchers.IO) {
                 val decoded = source.crop(region, turns)
-                try { PhotoImageAssist.apply(decoded, treatment).also { if (it !== decoded) decoded.recycle() } }
-                catch (problem: Throwable) { decoded.recycle(); throw problem }
+                var corrected: Bitmap? = null
+                try {
+                    val coroutine = currentCoroutineContext()
+                    val rectified = PhotoImageGeometry.apply(decoded, geometry) { !coroutine.isActive }
+                    corrected = rectified
+                    val output = PhotoImageAssist.apply(rectified, treatment)
+                    if (rectified !== decoded && rectified !== output) rectified.recycle()
+                    if (decoded !== output) decoded.recycle()
+                    output
+                } catch (problem: Throwable) {
+                    if (corrected !== decoded) corrected?.recycle()
+                    decoded.recycle(); throw problem
+                }
             }
+        }
+    }
+    fun beginGeometryEdit() {
+        val source = workspace.source ?: return
+        job?.cancel()
+        val ticket = ++revision
+        val region = workspace.region; val turns = workspace.quarterTurns
+        busy = true; searchingOrientations = false; error = null
+        job = scope.launch {
+            try {
+                PhotoStaging.prepare(ticket, { revision },
+                    { withContext(Dispatchers.IO) { source.crop(region, turns) } }) { preview ->
+                    geometryPreview = preview; geometryDraft = workspace.geometry
+                    crop = false; adjustingGeometry = true
+                }
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) { if (ticket == revision) error = "Could not prepare angle correction. Your draft is kept. ${e.message.orEmpty()}" }
+            finally { if (ticket == revision) busy = false }
         }
     }
     fun load(uri: Uri, capturePath: String? = null) {
@@ -127,6 +173,8 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
             workspace.source = stagedSource
             workspace.region = PhotoRegion.FULL; workspace.quarterTurns = 0
             workspace.treatment = PhotoImageTreatment.ORIGINAL; workspace.pendingRender = null
+            workspace.geometry = PhotoGeometryAdjustment.NONE; geometryDraft = PhotoGeometryAdjustment.NONE
+            adjustingGeometry = false; geometryPreview = null
             crop = false; cropX = 0f..1f; cropY = 0f..1f
         }) {
             withContext(Dispatchers.IO) {
@@ -166,9 +214,12 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
         var region = workspace.region
         repeat(option.turns) { region = region.rotateClockwise() }
         val turns = PhotoCropGeometry.turns(workspace.quarterTurns + option.turns)
-        workspace.pendingRender = PhotoRenderRequest(region, turns, workspace.treatment)
+        var geometry = workspace.geometry
+        repeat(option.turns) { geometry = geometry.rotateClockwise() }
+        workspace.pendingRender = PhotoRenderRequest(region, turns, workspace.treatment, geometry)
         start(draftOverride = option.draft, publish = {
-            workspace.region = region; workspace.quarterTurns = turns; crop = false; workspace.pendingRender = null
+            workspace.region = region; workspace.quarterTurns = turns; workspace.geometry = geometry
+            crop = false; workspace.pendingRender = null
         }) { withContext(Dispatchers.Default) { PhotoImageAssist.apply(image, quarterTurns = option.turns) } }
     }
     fun cancelReading() {
@@ -182,7 +233,7 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
     LaunchedEffect(workspace) {
         if (workspace.needsRead) {
             val pending = workspace.pendingRender
-            if (pending != null) render(pending.region, pending.quarterTurns, pending.treatment)
+            if (pending != null) render(pending.region, pending.quarterTurns, pending.treatment, pending.geometry)
             else bitmap?.let(::read) ?: workspace.source?.let { render(workspace.region, workspace.quarterTurns) }
         }
     }
@@ -208,7 +259,7 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
             Text("Use clear printed math. Check signs, powers and fractions before saving.", fontSize = 12.sp, lineHeight = 18.sp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Your draft stays here until cleared, saved, or the app restarts.", modifier = Modifier.weight(1f), fontSize = 12.sp, lineHeight = 18.sp)
-                TextButton(enabled = !saving && pendingCapture == null, onClick = { job?.cancel(); workspace.clear(); busy = false; searchingOrientations = false; orientationOptions = emptyList(); orientationImage = null }) { Text("Clear photo") }
+                TextButton(enabled = !saving && pendingCapture == null, onClick = { job?.cancel(); workspace.clear(); busy = false; searchingOrientations = false; orientationOptions = emptyList(); orientationImage = null; adjustingGeometry = false; geometryPreview = null }) { Text("Clear photo") }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = !saving && !busy && pendingCapture == null, modifier = Modifier.weight(1f), onClick = {
@@ -226,7 +277,12 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                 }, enabled = !busy && !saving, modifier = Modifier.weight(1f)) { Text("Choose image", fontSize = 14.sp) }
             }
             bitmap?.let { image ->
-                Box(Modifier.fillMaxWidth().height(230.dp).background(p.sheet)) {
+                val editImage = geometryPreview
+                if (adjustingGeometry && editImage != null) PhotoGeometryEditor(editImage, geometryDraft,
+                    enabled = !busy && !saving, onChange = { geometryDraft = it },
+                    onApply = { render(workspace.region, workspace.quarterTurns, geometry = geometryDraft) },
+                    onCancel = { adjustingGeometry = false; geometryPreview = null })
+                else Box(Modifier.fillMaxWidth().height(230.dp).background(p.sheet)) {
                     Image(image.asImageBitmap(), contentDescription = "Selected expression image", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     if (crop) Canvas(Modifier.fillMaxSize()) {
                         val scale = min(size.width / image.width, size.height / image.height)
@@ -237,22 +293,28 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    TextButton(enabled = !busy && !saving, onClick = {
-                        render(workspace.region.rotateClockwise(), workspace.quarterTurns + 1)
+                    TextButton(enabled = !busy && !saving && !adjustingGeometry, onClick = {
+                        render(workspace.region.rotateClockwise(), workspace.quarterTurns + 1, geometry = workspace.geometry.rotateClockwise())
                     }) { Text("Rotate 90°") }
-                    TextButton(enabled = !busy && !saving, onClick = { crop = !crop; cropX = 0f..1f; cropY = 0f..1f }) { Text(if (crop) "Cancel crop" else "Crop expression") }
-                    TextButton(enabled = !busy && !saving, onClick = { read(image) }) { Text("Read again") }
+                    TextButton(enabled = !busy && !saving && !adjustingGeometry && workspace.geometry == PhotoGeometryAdjustment.NONE,
+                        onClick = { crop = !crop; cropX = 0f..1f; cropY = 0f..1f }) { Text(if (crop) "Cancel crop" else "Crop expression") }
+                    TextButton(enabled = !busy && !saving && !adjustingGeometry, onClick = { read(image) }) { Text("Read again") }
+                }
+                TextButton(enabled = !busy && !saving && !crop && !adjustingGeometry, onClick = ::beginGeometryEdit) { Text("Adjust angle / perspective") }
+                if (workspace.geometry != PhotoGeometryAdjustment.NONE && !adjustingGeometry) {
+                    Text("To choose a new crop, reset angle and perspective first. The original image is retained.", fontSize = 12.sp, lineHeight = 18.sp)
+                    TextButton(enabled = !busy && !saving, onClick = { render(workspace.region, workspace.quarterTurns, geometry = PhotoGeometryAdjustment.NONE) }) { Text("Reset angle / perspective") }
                 }
                 Text("Image treatment · changes the preview before reading", fontSize = 12.sp, lineHeight = 18.sp)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(PhotoImageTreatment.ORIGINAL to "Original", PhotoImageTreatment.CONTRAST to "Boost contrast",
                         PhotoImageTreatment.INVERT_CONTRAST to "Light text on dark").forEach { (treatment, label) ->
-                        FilterChip(workspace.treatment == treatment, enabled = !busy && !saving && !crop,
+                        FilterChip(workspace.treatment == treatment, enabled = !busy && !saving && !crop && !adjustingGeometry,
                             onClick = { if (workspace.treatment != treatment) render(workspace.region, workspace.quarterTurns, treatment) }, label = { Text(label) })
                     }
                 }
-                TextButton(enabled = !busy && !saving && !crop, onClick = { searchOrientations(image) }) { Text("Try other orientations") }
-                if (orientationOptions.isNotEmpty()) {
+                TextButton(enabled = !busy && !saving && !crop && !adjustingGeometry, onClick = { searchOrientations(image) }) { Text("Try other orientations") }
+                if (orientationOptions.isNotEmpty() && !adjustingGeometry) {
                     Text("Choose an orientation after checking its text. You can choose a completed option while the remaining rotations are still being read.", fontSize = 12.sp, lineHeight = 18.sp)
                     orientationOptions.forEach { option ->
                         OutlinedButton(enabled = !saving && (!busy || searchingOrientations), modifier = Modifier.fillMaxWidth(), onClick = { chooseOrientation(option) }) {
@@ -275,8 +337,17 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                         render(workspace.region.subregion(selected), workspace.quarterTurns)
                     }) { Text("Read cropped expression") }
                 }
-                if (workspace.region != PhotoRegion.FULL || workspace.quarterTurns != 0 || workspace.treatment != PhotoImageTreatment.ORIGINAL)
-                    TextButton(enabled = !busy && !saving, onClick = { render(PhotoRegion.FULL, 0, PhotoImageTreatment.ORIGINAL) }) { Text("Restore original image") }
+                if (workspace.region != PhotoRegion.FULL || workspace.quarterTurns != 0 || workspace.treatment != PhotoImageTreatment.ORIGINAL || workspace.geometry != PhotoGeometryAdjustment.NONE)
+                    TextButton(enabled = !busy && !saving && !adjustingGeometry, onClick = { render(PhotoRegion.FULL, 0, PhotoImageTreatment.ORIGINAL, PhotoGeometryAdjustment.NONE) }) { Text("Restore original image") }
+                if (!adjustingGeometry) {
+                    Text("Hard to read? Crop the whole expression, correct its angle, or try contrast and orientation options. If signs are blurred or missing, take a closer photo with even lighting, or enter the expression yourself.",
+                        fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    TextButton(enabled = !saving, onClick = {
+                        if (busy) cancelReading()
+                        crop = false
+                        scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue); expressionFocus.requestFocus() }
+                    }) { Text("Type expression instead") }
+                }
             }
             if (busy) {
                 if (searchingOrientations) {
@@ -286,11 +357,12 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                 TextButton(enabled = !saving, onClick = ::cancelReading) { Text("Cancel reading") }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 12.dp)) }
+            workspace.imageAdvice.forEach { Text(it, color = p.amber2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp)) }
             warnings.forEach { Text(it, color = p.amber2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp)) }
             if (corrections.isNotEmpty()) {
                 Text("Possible corrections · check the image first", fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 12.dp))
                 corrections.forEach { correction ->
-                    OutlinedButton(enabled = !busy && !saving, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth(), onClick = {
+                    OutlinedButton(enabled = !busy && !saving && !adjustingGeometry, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth(), onClick = {
                         text = correction.expression; editRejected = false; scrollAfterRead = true
                         warnings = listOf("You selected a suggested correction. Check every symbol against the image before saving.")
                     }) { Column(Modifier.fillMaxWidth()) {
@@ -305,17 +377,17 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                 var linesExpanded by remember(recognizedText) { mutableStateOf(false) }
                 TextButton(enabled = !saving, onClick = { linesExpanded = !linesExpanded }) { Text(if (linesExpanded) "Hide raw text lines" else "Choose a raw text line") }
                 if (linesExpanded) recognizedLines.forEachIndexed { index, line ->
-                    OutlinedButton(onClick = { text = line; editRejected = false; scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue) } }, enabled = !busy && !saving, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { text = line; editRejected = false; scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue) } }, enabled = !busy && !saving && !adjustingGeometry, modifier = Modifier.fillMaxWidth()) {
                         Text("${index + 1}. $line", maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-            if (recognizedText.isNotEmpty() && text != recognizedText) TextButton(onClick = { text = recognizedText; editRejected = false }, enabled = !busy && !saving) { Text("Use raw recognized text") }
+            if (recognizedText.isNotEmpty() && text != recognizedText) TextButton(onClick = { text = recognizedText; editRejected = false }, enabled = !busy && !saving && !adjustingGeometry) { Text("Use raw recognized text") }
             OutlinedTextField(text, { if (it.length <= CalcSession.MAX_ENTRY_CHARS) { text = it; editRejected = false } else { error = "The pasted text is too long and was not inserted."; editRejected = true } }, keyboardOptions = MathKeyboard,
-                label = { Text("Expression · edit to correct") }, enabled = !busy && !saving,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp), maxLines = 6)
+                label = { Text("Expression · edit to correct") }, enabled = !busy && !saving && !adjustingGeometry,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).focusRequester(expressionFocus), maxLines = 6)
             Text("Angle mode: ${settings.angle.name}", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 6.dp))
-            RecognitionAnswer(text, settings, environment, enabled = !busy && !crop && !editRejected, saving = saving,
+            RecognitionAnswer(text, settings, environment, enabled = !busy && !crop && !adjustingGeometry && !editRejected, saving = saving,
                 onResolved = { if (scrollAfterRead) { scrollAfterRead = false; scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue) } } }, onSave = onUse)
             Text("Word problems and complex or handwritten layouts may need manual entry. Only the recognized expression is calculated.", fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 12.dp))
             Text("Only the reviewed expression is saved in calculation history. The photo stays in memory for this draft; Clear photo releases it. The temporary camera file is deleted after reading.",
