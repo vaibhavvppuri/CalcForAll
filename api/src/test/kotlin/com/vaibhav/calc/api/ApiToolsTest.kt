@@ -30,7 +30,7 @@ class ApiToolsTest : StringSpec({
             application { calcModule() }
             val caps = client.get("/v1/capabilities").tree()
             caps.at("apiVersion") shouldBe JsonValue.Number("1")
-            caps.at("releaseVersion").word() shouldBe "2.0"
+            caps.at("releaseVersion").word() shouldBe "1.7"
             val operations = caps.at("operations").list().map { it.word() }
             operations.containsAll(listOf("evaluate", "finance", "dates", "taylor", "bitwise", "series")) shouldBe true
             val catalog = client.get("/v1/tool-catalog")

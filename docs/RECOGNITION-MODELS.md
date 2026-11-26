@@ -1,5 +1,7 @@
 # Offline recognition model research
 
+**Follow-up, 15 November 2026:** [small CoMER model feasibility](RECOGNITION-MODELS-2026-11-15.md) records a promising smaller export, unresolved upstream weight permissions and API23 runtime requirements. No learned model has been integrated or ruled out as technically impossible. The review below remains the dated Paddle/ML Kit assessment.
+
 Reviewed **14 November 2026** for the 2.2 development cycle. This is a feasibility review, not a model integration or accuracy claim. Only publisher documentation, model listings and source text were inspected. No model weights were downloaded or executed, and no runtime dependency was added for this research.
 
 ## Current decision

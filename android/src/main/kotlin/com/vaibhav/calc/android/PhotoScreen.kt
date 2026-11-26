@@ -31,6 +31,7 @@ import kotlinx.coroutines.*
 import kotlin.math.min
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWorkspace, saving: Boolean = false, onClose: () -> Unit, onUse: (String) -> Unit) {
     BackHandler { if (!saving) onClose() }
     val context = LocalContext.current
@@ -138,7 +139,7 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                     val coroutine = currentCoroutineContext()
                     val rectified = PhotoImageGeometry.apply(decoded, geometry) { !coroutine.isActive }
                     corrected = rectified
-                    val output = PhotoImageAssist.apply(rectified, treatment)
+                    val output = PhotoImageAssist.apply(rectified, treatment, shouldStop = { !coroutine.isActive })
                     if (rectified !== decoded && rectified !== output) rectified.recycle()
                     if (decoded !== output) decoded.recycle()
                     output
@@ -306,12 +307,16 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                     TextButton(enabled = !busy && !saving, onClick = { render(workspace.region, workspace.quarterTurns, geometry = PhotoGeometryAdjustment.NONE) }) { Text("Reset angle / perspective") }
                 }
                 Text("Image treatment · changes the preview before reading", fontSize = 12.sp, lineHeight = 18.sp)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(PhotoImageTreatment.ORIGINAL to "Original", PhotoImageTreatment.CONTRAST to "Boost contrast",
+                        PhotoImageTreatment.SHADOW_REDUCTION to "Reduce shadows",
                         PhotoImageTreatment.INVERT_CONTRAST to "Light text on dark").forEach { (treatment, label) ->
                         FilterChip(workspace.treatment == treatment, enabled = !busy && !saving && !crop && !adjustingGeometry,
                             onClick = { if (workspace.treatment != treatment) render(workspace.region, workspace.quarterTurns, treatment) }, label = { Text(label) })
                     }
+                }
+                if (workspace.treatment == PhotoImageTreatment.SHADOW_REDUCTION) {
+                    Text("Reduces uneven lighting on light paper. Check small dots and thin bars in the preview; use Original if detail is lost.", fontSize = 12.sp, lineHeight = 18.sp)
                 }
                 TextButton(enabled = !busy && !saving && !crop && !adjustingGeometry, onClick = { searchOrientations(image) }) { Text("Try other orientations") }
                 if (orientationOptions.isNotEmpty() && !adjustingGeometry) {
@@ -340,7 +345,7 @@ fun PhotoScreen(settings: Settings, environment: Environment, workspace: PhotoWo
                 if (workspace.region != PhotoRegion.FULL || workspace.quarterTurns != 0 || workspace.treatment != PhotoImageTreatment.ORIGINAL || workspace.geometry != PhotoGeometryAdjustment.NONE)
                     TextButton(enabled = !busy && !saving && !adjustingGeometry, onClick = { render(PhotoRegion.FULL, 0, PhotoImageTreatment.ORIGINAL, PhotoGeometryAdjustment.NONE) }) { Text("Restore original image") }
                 if (!adjustingGeometry) {
-                    Text("Hard to read? Crop the whole expression, correct its angle, or try contrast and orientation options. If signs are blurred or missing, take a closer photo with even lighting, or enter the expression yourself.",
+                    Text("Hard to read? Crop the whole expression, correct its angle, or try contrast, shadow reduction and orientation options. If signs are blurred or missing, take a closer photo with even lighting, or enter the expression yourself.",
                         fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(vertical = 8.dp))
                     TextButton(enabled = !saving, onClick = {
                         if (busy) cancelReading()

@@ -41,7 +41,7 @@ internal object InkRecovery {
             if (index in reviewed) false else {
                 val candidates = draft.glyphs[index].candidates
                 val best = candidates.firstOrNull()
-                best == null || !best.distance.isFinite() || best.distance > .075f ||
+                best == null || best.requiresReview || !best.distance.isFinite() || best.distance > .075f ||
                     candidates.drop(1).any { it.symbol != best.symbol &&
                         (!it.distance.isFinite() || it.distance - best.distance < .018f) }
             }

@@ -1,6 +1,6 @@
 # CalcForAll local API
 
-Release **2.0** keeps the additive **v1** wire protocol. `/v1/capabilities` distinguishes `releaseVersion` from `apiVersion`; existing endpoint paths and numeric machine fields remain available. The public release name is Version 2.0; earlier development labels remain in historical verification records.
+Release **1.7** keeps the additive **v1** wire protocol. `/v1/capabilities` distinguishes `releaseVersion` from `apiVersion`; existing endpoint paths and numeric machine fields remain available. The previous code-9 build is publicly cataloged as Version 1.6 with its original internal 2.0 identity preserved. Final Version 2.0 remains reserved; earlier development labels remain in historical verification records.
 
 The optional JVM server uses the **same `:core` calculator as the Android app**. It does not call an external service, require an account, upload inputs, or charge for calculations. The Android app does not need this server to run.
 
@@ -26,7 +26,7 @@ To create an installable server distribution:
 ./gradlew :api:installDist
 ```
 
-Alternatively, `:api:distZip` creates `api/build/distributions/api-2.0.zip`. Extract it and run `api-2.0/bin/api.bat` on Windows or `api-2.0/bin/api` on Linux/macOS with JDK 17 or newer available. The handoff may name the same ZIP `CalcForAll - Version 2.0 - Local API.zip`; its internal directory stays `api-2.0`.
+Alternatively, `:api:distZip` creates `api/build/distributions/api-1.7.zip`. Extract it and run `api-1.7/bin/api.bat` on Windows or `api-1.7/bin/api` on Linux/macOS with JDK 17 or newer available. The handoff may name the same ZIP `CalcForAll - Version 1.7 - Local API.zip`; its internal directory stays `api-1.7`.
 
 Build dependencies are downloaded during the first development build. Once built, calculation itself requires no internet access. Keep the Gradle dependency cache for later `--offline` builds.
 

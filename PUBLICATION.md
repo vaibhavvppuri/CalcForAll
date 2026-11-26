@@ -1,10 +1,10 @@
-# Public Version 1.6 — incremental development release
+# Public Version 1.7 — incremental development release
 
-**This is public Version 1.6, not final Version 2.0.** It is the verified incremental development build from source commit `7e1b9d0155246e36f7c1241b33dca3bf0af635d2`. Its unchanged APK, API and source retain historical internal version `2.0`, Android versionCode 9. That internal name and the old package labels do not signify acceptance of the separately reserved final Version 2.0 milestone.
+**This is public Version 1.7, not final Version 2.0.** It is the verified incremental development build from source commit `3d9eb0f645a5ce12f79ea491b48d49691c41a7d1`. The APK, API and source retain internal version `1.7`, Android versionCode 10. The separately reserved final Version 2.0 milestone has not been accepted.
 
-The [Version 1.6 prerelease](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.6) includes the development-signed Android APK, optional local API, complete source, historical verification evidence and publication provenance.
+The [Version 1.7 prerelease](https://github.com/vaibhavvppuri/CalcForAll/releases/tag/v1.7) includes the development-signed Android APK, optional local API, complete source, historical verification evidence and publication provenance.
 
-This milestone includes numerical root-search optimization, photo straightening and corner correction, and ink recovery controls. The recorded same-APK native runs passed 34 of 34 checks on each of API 23 and API 34, including the previously failing numerical case. The historical record also contains 1,521 host tests, 19 manual observations and 19 local-API smoke checks. These are the original build's tests, not new tests run during publication.
+Recorded checks include 1,546 host tests, 37 native tests on each of API 23 and API 34, 17 manual observations and 19 local-API smoke checks. Controlled faint-fraction and shadow-treatment observations and 15 identical before/after synthetic ink fixtures have their exact scope described in the release notes. They are not general recognition-accuracy percentages. These are the original build's checks, not new application tests run during publication.
 
 Calculation and bundled recognition work offline and free without paid APIs, image uploads or runtime model downloads. Review every transcription and answer. Poor photographs, connected handwriting and unsupported mathematical layouts may still need correction or typed input. Unsaved drafts remain memory-only and do not survive process death. Physical phones, physical styluses, TalkBack and 16 KB-page runtime execution remain unverified. Controlled fixtures and emulator timings do not establish general recognition accuracy or physical-device performance.
 

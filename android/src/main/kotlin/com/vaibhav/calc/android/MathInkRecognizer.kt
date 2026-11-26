@@ -214,7 +214,7 @@ object MathInkRecognizer {
                     uncertain = true, sourceIndex = index)
                 continue
             }
-            val uncertain = best.distance > .075f || matches.drop(1).any { it.distance - best.distance < .018f && it.symbol != best.symbol }
+            val uncertain = best.requiresReview || best.distance > .075f || matches.drop(1).any { it.distance - best.distance < .018f && it.symbol != best.symbol }
             tokens += MathToken(best.symbol, b, matches.drop(1).map { it.symbol }, if (force == null) best.distance else null,
                 uncertain = uncertain || force != null || group.any { it in detachedDigits }, sourceIndex = index)
         }

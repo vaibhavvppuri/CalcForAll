@@ -2,7 +2,7 @@
 
 Decision date: 10 November 2026. This is the build plan and naming rationale, not a claim that every planned feature has shipped. Consult the release notes and verification report for delivered capabilities.
 
-**Current naming decision, 15 November 2026:** the user has named this public delivery **Version 2.0**, Android version code **9**. It continues development candidate `2.3.0 / 395f721`; the dated development labels below remain intact as historical provenance. The final section records the current scope, completed application validation and remaining product limits. Renaming alone is not evidence of completion; distribution integrity has separate release receipts.
+**Current naming decision, 15 November 2026 (owner correction):** the delivered `7e1b9d0` build is publicly **Version 1.6**, retaining its original internal 2.0/code 9 and immutable test history. The current validated increment is **Version 1.7 / code 10**. **Final Version 2.0 remains reserved and unbuilt.** The historical public-2.0 section below describes the now-relabeled Version 1.6 increment. Passing gates does not establish that meaningful remaining improvements are exhausted.
 
 ## Purpose and boundaries
 
@@ -268,9 +268,9 @@ The baseline's identical x and multiplication templates cannot establish user in
 
 No bundled learned model, runtime download, paid service or image upload is implied by this increment. Unrestricted cursive, handwritten function-word recognition, arbitrary pages/word problems and full CAS remain outside scope. Physical phones/styluses, TalkBack, a 16 KB-page runtime and a representative recognition dataset remain separate validation work. Source/archive integrity will be documented by the release-specific manifest and audit rather than inferred from test declarations.
 
-## Public Version 2.0: recover difficult input without guessing (15 November 2026)
+## Historical increment, now Version 1.6: recover difficult input without guessing (15 November 2026)
 
-The owner asked for the best feasible offline/free recovery from difficult photos and handwriting, clearer fallback when recognition cannot help, and a responsive calculator. The source baseline is development candidate **`395f721`**. The public name is **Version 2.0 / code 9**; internal working folders may retain the development label. Prior artifacts and failed receipts remain immutable. This increment adds no bundled model, runtime model download, paid API or image upload.
+The owner asked for the best feasible offline/free recovery from difficult photos and handwriting, clearer fallback when recognition cannot help, and a responsive calculator. The source baseline is development candidate **`395f721`**. This build was originally named **2.0 / code 9**, then relabelled publicly **Version 1.6** at the owner's request; its embedded identity and original evidence remain unchanged. Prior artifacts and failed receipts remain immutable. This increment adds no bundled model, runtime model download, paid API or image upload.
 
 Evidence remains **Tier C**: the user brief, source review, bounded independent fixtures and recorded emulator failures. Kano classifications are hypotheses, not survey findings. The existing weighting is `0.40U + 0.25Q + 0.20R + 0.15E`; dependencies and Must requirements override ranking. No score substitutes for exact-artifact verification.
 
@@ -290,4 +290,25 @@ The failure-cost countercheck favors preserving intent over guessing an answer. 
 
 Physical phones/styluses, TalkBack, a 16 KB-page runtime and representative recognition accuracy remain untested. A small desktop root comparison and emulator checks do not establish universal performance. Historical candidate failures remain intact in [VERIFICATION.md](VERIFICATION.md). General cursive/pages and full CAS remain outside scope.
 
-The workspace delivery folder is `releases/Version 2.0`, with `CalcForAll - Version 2.0.apk`, `CalcForAll - Version 2.0 - Source.zip`, `CalcForAll - Version 2.0 - Local API.zip` and `CalcForAll - Version 2.0 - Verification.zip`. File identity, source/archive integrity and final file-scan results are established by separate release receipts; application validation does not imply those packaging checks have already passed.
+The historical delivery was subsequently verified and relabelled under `releases/Version 1.6`, with Version 1.6 APK, Source, Local API and Verification filenames. The relabel receipt preserves the exact original hashes and maps the former Version 2.0 names. Its successful archive audit and file-scan receipts certify those unchanged artifacts only; they do not approve a new increment or the reserved final Version 2.0.
+
+
+## Version 1.7: improve recognition where the executable baseline fails
+
+**Application validation passed for Version 1.7 / code 10:** 1,546 host tests, 37/37 native tests on each API 23/34 emulator, 17 recorded manual observations (9 on API 23; 8 on API 34), and 19 packaged-API checks. Archive integrity and the final source commit are established separately by the release manifest and package audit. **Final Version 2.0 remains reserved.**
+
+The same-path synthetic ink comparison recovers narrow 0/2/4/9 with explicit review, offers / instead of a mistaken root for the tested straight slash, and adds a single-symbol decimal candidate for a tap. Original continuous 9 still reads 9 but now needs review. The tested flat-top 3 still leads with incorrect 5; 3 is an alternative, so correction remains necessary. The same faint-fraction PNG changes from a rejected baseline layout to reviewed 1/2+1/3 = 5/6. Reduce shadows preserves the input and displays the processed image; the untreated manual fixture already read 46, so no shadow OCR accuracy gain is claimed. These controlled examples support this bounded increment; they do not close the remaining recognition, physical-device or model-evaluation work.
+
+The owner's newest instruction takes precedence over earlier naming decisions: continue through incremental 1.x releases while worthwhile offline/free improvements remain. Keep all historical artifact identities, and do not present Version 2.0 as final merely because a build passes tests.
+
+Evidence remains Tier C: actual source/probes and independent synthetic inputs, not a representative user study. MoSCoW controls scope; Kano categories are hypotheses. The existing score is 0.40U + 0.25Q + 0.20R + 0.15E. Scores cannot waive negative tests, licensing, offline delivery or compatibility.
+
+| Priority | Work | U/Q/R/E | Score | MoSCoW | Kano hypothesis | Required evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Preserve uncertainty when narrow digits resemble 1 | 10/9/10/8 | 9.45 | Must | Must-be | Same-path executable baseline/after comparison; explicit-review propagation; no regression for ordinary 1, roots or operators |
+| 2 | Recover visible faint fraction rules conservatively | 9/9/9/8 | 8.85 | Must | Must-be | Pixel evidence plus complete layout; incomplete/stray/table-line negatives; bundled OCR before/after on the same fixture |
+| 3 | Reduce uneven illumination in an explicit image treatment | 9/8/8/8 | 8.40 | Should | Performance | Bounded memory/work, exact displayed input, cancellation, thin-dot/bar preservation and real native OCR checks |
+| 4 | Restore one-symbol tap entry and visible treatment controls | 8/8/8/9 | 8.15 | Should | Performance | Actual tap candidate, unsupported multi-dot negatives, accessible visible controls and large-text workflow checks |
+| 5 | Investigate small learned models with separate asset rights | 9/4/7/3 | 6.45 | Could research | Attractive | Pin source/weights/runtime independently; verify redistribution rights, API23 CPU execution, full offline assets and an independent recognition comparison before integration |
+
+Final Version 2.0 is a reserved decision milestone. It requires current application and artifact gates, an honest supported-feature inventory, measured recognition results including failure/correction rates, and a review showing no known high-priority practical improvement has simply been skipped. Retaking a picture with erased or absent detail can remain necessary; that physical limit must be distinguished from fixable reader failures. Broader recognition, physical-device checks and model integration remain separate work when not established. No claim has been made that a remaining model pilot is impossible or that its credit cost would exceed any rupee amount; such estimates need evidence.

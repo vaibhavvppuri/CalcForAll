@@ -9,11 +9,10 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 
 data class PhotoMathDraft(val rawText: String, val layout: MathLayoutResult, val truncated: Boolean = false,
                           val corrections: List<PhotoMathCorrection> = emptyList(),
@@ -201,7 +200,8 @@ object PhotoMathReader {
                         MathLayoutResult.Rejected("Some recognized text has no matching symbols. Crop a clearer expression or enter it manually."),
                         incomplete = true)
                     val tokens = adapted.tokens
-                    val full = if (adapted.missingGeometry) tokens else tokens + missingRules(image, tokens)
+                    val layoutContext = currentCoroutineContext()
+                    val full = if (adapted.missingGeometry) tokens else tokens + missingRules(image, tokens) { !layoutContext.isActive }
                     var layout = if (adapted.missingGeometry)
                         MathLayoutResult.Rejected("Some symbol positions are missing. Review the raw text or crop the expression.")
                         else MathLayout.read(full)
@@ -251,57 +251,11 @@ object PhotoMathReader {
             .distinctBy { it.expression }.take(PhotoMathCorrections.MAX_CORRECTIONS)
     }
 
-    /** Heuristic recovery of a printed rule omitted by OCR. Glyphs on both sides narrow
-     * the candidates, but page rules can still be mistaken for fraction bars: mark uncertain. */
-    internal fun missingRules(image: Bitmap, tokens: List<MathToken>): List<MathToken> {
+    /** Pixel evidence and full-layout guards remain uncertain; no numerical answer is used. */
+    internal fun missingRules(image: Bitmap, tokens: List<MathToken>, shouldStop: () -> Boolean = { false }): List<MathToken> {
         requireBoundedImage(image)
-        if (tokens.isEmpty() || tokens.size > MathLayout.MAX_TOKENS) return emptyList()
-        val heights = tokens.map { it.bounds.height }.filter { it >= 4f }.sorted()
-        val height = heights.getOrNull(heights.size / 2) ?: return emptyList()
-        val minRun = max(8, (height * .65f).toInt())
-        val row = IntArray(image.width)
-        val rules = mutableListOf<MathBox>()
-        // An omitted rule just outside a lone numerator/denominator must still be
-        // retained: ignoring it could turn an incomplete fraction into a number.
-        val margin = height * .75f
-        val top = max(0, (tokens.minOf { it.bounds.top } - margin).toInt())
-        val bottom = min(image.height - 1, (tokens.maxOf { it.bounds.bottom } + margin).toInt())
-        for (y in top..bottom) {
-            image.getPixels(row, 0, image.width, 0, y, image.width, 1)
-            var start = -1
-            for (x in 0..image.width) {
-                val color = if (x < image.width) row[x] else -1
-                val alpha = (color ushr 24) and 255
-                val gray = ((color shr 16) and 255) * 3 + ((color shr 8) and 255) * 6 + (color and 255)
-                val dark = x < image.width && (gray * alpha + 2550 * (255 - alpha)) / 255 < 1100
-                if (dark && start < 0) start = x
-                if (!dark && start >= 0) {
-                    if (x - start >= minRun) {
-                        val existing = rules.indexOfLast { it.bottom >= y - 1 && abs(it.left - start) <= 2 && abs(it.right - x) <= 2 }
-                        if (existing >= 0) rules[existing] = rules[existing].copy(bottom = y + 1f)
-                        else {
-                            require(rules.size < 512) { "This image has too many lines or marks. Crop one expression and try again." }
-                            rules += MathBox(start.toFloat(), y.toFloat(), x.toFloat(), y + 1f)
-                        }
-                    }
-                    start = -1
-                }
-            }
-        }
-        return rules.filter { b ->
-            val root = tokens.firstOrNull { t -> val q = t.bounds
-                t.text == "√" && abs(b.top - q.top) <= height * .2f && abs(b.left - q.right) <= height * .25f &&
-                    b.right > q.right + height * .3f }
-            val clear = tokens.none { t -> val q = t.bounds
-                t !== root &&
-                    q.left < b.right && q.right > b.left && q.top <= b.bottom && q.bottom >= b.top }
-            val below = tokens.any { t -> val q = t.bounds
-                    q.centerX in b.left..b.right && q.top > b.bottom && q.top - b.bottom < height * 2.5f }
-            val above = tokens.any { t -> val q = t.bounds
-                q.centerX in b.left..b.right && q.bottom < b.top && b.top - q.bottom < height * 2.5f }
-            b.height <= max(2f, height * .18f) && clear &&
-                (if (root != null) below else above || below)
-        }.take(MathLayout.MAX_TOKENS - tokens.size + 1).map { MathToken("-", it, uncertain = true) }
+        return PhotoRuleDetector.detect(image.width, image.height, tokens,
+            readRow = { y, row -> image.getPixels(row, 0, image.width, 0, y, image.width, 1) }, shouldStop = shouldStop)
     }
 
     private fun requireBoundedImage(image: Bitmap) {

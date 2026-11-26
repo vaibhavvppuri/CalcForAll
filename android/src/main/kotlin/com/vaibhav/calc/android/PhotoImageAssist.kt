@@ -2,9 +2,10 @@ package com.vaibhav.calc.android
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import java.util.concurrent.CancellationException
 
 /** Explicit image operations. A treatment changes pixels, never the recognized expression. */
-enum class PhotoImageTreatment { ORIGINAL, CONTRAST, INVERT_CONTRAST }
+enum class PhotoImageTreatment { ORIGINAL, CONTRAST, INVERT_CONTRAST, SHADOW_REDUCTION }
 
 object PhotoImageAssist {
     /**
@@ -12,14 +13,45 @@ object PhotoImageAssist {
      * otherwise the caller owns a new bitmap. This method never recycles its input.
      */
     fun apply(image: Bitmap, treatment: PhotoImageTreatment = PhotoImageTreatment.ORIGINAL,
-              quarterTurns: Int = 0): Bitmap {
+              quarterTurns: Int = 0, shouldStop: () -> Boolean = { false }): Bitmap {
+        fun checkActive() {
+            if (Thread.currentThread().isInterrupted || shouldStop()) throw CancellationException("Photo treatment cancelled.")
+        }
+        checkActive()
         require(!image.isRecycled && image.width in 1..PhotoCropGeometry.MAX_EDGE &&
             image.height in 1..PhotoCropGeometry.MAX_EDGE) { "Use an image with edges no larger than 2048 pixels." }
         val turns = PhotoCropGeometry.turns(quarterTurns)
-        val prepared = if (treatment == PhotoImageTreatment.ORIGINAL) image else {
+        val prepared = if (treatment == PhotoImageTreatment.ORIGINAL) image else if (treatment == PhotoImageTreatment.SHADOW_REDUCTION) {
+            val row = IntArray(image.width)
+            val gray = ByteArray(image.width * image.height)
+            for (y in 0 until image.height) {
+                checkActive()
+                image.getPixels(row, 0, row.size, 0, y, row.size, 1)
+                for (x in row.indices) gray[y * image.width + x] =
+                    PhotoToneCurve.gray(row[x], PhotoImageTreatment.ORIGINAL).toByte()
+            }
+            val normalized = PhotoLocalContrast.normalize(image.width, image.height, gray, shouldStop)
+            val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+            try {
+                for (y in 0 until image.height) {
+                    checkActive()
+                    for (x in row.indices) {
+                        val value = normalized[y * image.width + x].toInt() and 255
+                        row[x] = 0xff000000.toInt() or (value shl 16) or (value shl 8) or value
+                    }
+                    output.setPixels(row, 0, row.size, 0, y, row.size, 1)
+                }
+                checkActive()
+                output
+            } catch (problem: Throwable) {
+                output.recycle()
+                throw problem
+            }
+        } else {
             val row = IntArray(image.width)
             val histogram = IntArray(256)
             for (y in 0 until image.height) {
+                checkActive()
                 image.getPixels(row, 0, row.size, 0, y, row.size, 1)
                 for (pixel in row) histogram[PhotoToneCurve.gray(pixel, treatment)]++
             }
@@ -27,10 +59,12 @@ object PhotoImageAssist {
             val output = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
             try {
                 for (y in 0 until image.height) {
+                    checkActive()
                     image.getPixels(row, 0, row.size, 0, y, row.size, 1)
                     for (x in row.indices) row[x] = curve.argb(PhotoToneCurve.gray(row[x], treatment))
                     output.setPixels(row, 0, row.size, 0, y, row.size, 1)
                 }
+                checkActive()
                 output
             } catch (problem: Throwable) {
                 output.recycle()
@@ -40,6 +74,7 @@ object PhotoImageAssist {
         if (turns == 0) return prepared
         var rotated: Bitmap? = null
         try {
+            checkActive()
             val transform = Matrix().apply { setRotate(turns * 90f) }
             return Bitmap.createBitmap(prepared, 0, 0, prepared.width, prepared.height, transform, false)
                 .also { rotated = it }

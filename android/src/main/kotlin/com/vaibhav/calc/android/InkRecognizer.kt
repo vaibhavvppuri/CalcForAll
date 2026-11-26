@@ -3,7 +3,7 @@ package com.vaibhav.calc.android
 import kotlin.math.*
 
 data class InkPoint(val x: Float, val y: Float)
-data class InkCandidate(val symbol: String, val distance: Float)
+data class InkCandidate(val symbol: String, val distance: Float, val requiresReview: Boolean = false)
 
 /** Small offline symbol matcher, not a trained handwriting or layout model. Geometry only. */
 object InkRecognizer {
@@ -48,6 +48,19 @@ object InkRecognizer {
         "^" to listOf(stroke(0f, .7f, .5f, 0f, 1f, .7f)),
     )
     private val normalized by lazy { templates.map { (label, paths) -> Triple(label, normalize(paths), paths.size) } }
+    private data class NarrowTemplate(val symbol: String, val cloud: List<InkPoint>, val strokes: Int, val aspect: Float)
+    /** A small, fixed style family, not unconstrained anisotropic normalization of every mark. */
+    private val narrowNormalized by lazy {
+        templates.filter { it.first in setOf("0", "2", "3", "4", "5", "6", "7", "8", "9") }.flatMap { (label, paths) ->
+            listOf(.45f, .70f).map { factor ->
+                val adjusted = paths.map { path -> path.map { p -> InkPoint(p.x * factor, p.y) } }
+                val points = adjusted.flatten()
+                val width = points.maxOf { it.x } - points.minOf { it.x }
+                val height = points.maxOf { it.y } - points.minOf { it.y }
+                NarrowTemplate(label, normalize(adjusted), paths.size, width / height)
+            }
+        }
+    }
 
     /**
      * A detached cap is admitted only with the endpoint/topology of a five or seven.
@@ -102,7 +115,7 @@ object InkRecognizer {
             if (stroke.size > 12000 - pointCount) return emptyList()
             pointCount += stroke.size
         }
-        if (pointCount < 2) return emptyList()
+        if (pointCount == 0) return emptyList()
         val points = strokes.flatten()
         // These are screen coordinates, not calculator values. Bound finite input as
         // well: extreme Float coordinates can otherwise overflow geometry into NaN.
@@ -119,9 +132,60 @@ object InkRecognizer {
         fun distance(a: List<InkPoint>, b: List<InkPoint>): Float = a.sumOf { p ->
             b.minOf { q -> hypot(p.x - q.x, p.y - q.y) }.toDouble()
         }.toFloat() / a.size
-        return normalized.map { (symbol, sample, count) ->
+        val ordinary = normalized.map { (symbol, sample, count) ->
             InkCandidate(symbol, (distance(cloud, sample) + distance(sample, cloud)) / 2 + abs(strokes.size - count) * .008f)
-        }.groupBy { it.symbol }.map { (_, variants) -> variants.minBy { it.distance } }.sortedBy { it.distance }.take(5)
+        }
+        // A genuinely straight stroke has neither a radical hook nor an overbar.
+        // Its intended slash versus strongly tilted one is still a user's choice.
+        if (ordinary.minBy { it.distance }.symbol != "/" && isDescendingStroke(strokes, width, height))
+            return listOf(InkCandidate("/", .04f, requiresReview = true), InkCandidate("1", .05f, requiresReview = true))
+        // Uniform normalization can make a narrow loop/turning digit resemble a straight
+        // one. Offer only a fixed, aspect-compatible digit style when real lateral detail
+        // and path length distinguish it from a line. A style-dependent result is always
+        // review-required, regardless of how small its geometric distance happens to be.
+        val narrow = if (ordinary.minOf { it.distance } > .025f && hasNarrowDetail(strokes, points, width, height)) {
+            val aspect = width / height
+            narrowNormalized.filter { aspect / it.aspect in .72f..1.38f }.map { variant ->
+                InkCandidate(variant.symbol,
+                    (distance(cloud, variant.cloud) + distance(variant.cloud, cloud)) / 2 +
+                        abs(strokes.size - variant.strokes) * .008f + .006f,
+                    requiresReview = true)
+            }
+        } else emptyList()
+        val ranked = (ordinary + narrow).groupBy { it.symbol }.map { (_, variants) -> variants.minBy { it.distance } }
+            .sortedBy { it.distance }.take(5)
+        val original = ordinary.minBy { it.distance }
+        return if (ranked.first().requiresReview && ranked.none { it.symbol == original.symbol })
+            (ranked.take(4) + original).sortedBy { it.distance }
+        else ranked
+    }
+
+    private fun hasNarrowDetail(strokes: List<List<InkPoint>>, points: List<InkPoint>, width: Float, height: Float): Boolean {
+        if (strokes.size > 3 || height <= 0f || width / height !in .12f.. .70f) return false
+        var length = 0.0
+        for (path in strokes) for (i in 1 until path.size) length += hypot(
+            (path[i].x - path[i - 1].x).toDouble(), (path[i].y - path[i - 1].y).toDouble())
+        if (length / height !in 1.35..4.5) return false
+        val top = points.minBy { it.y }; val bottom = points.maxBy { it.y }
+        val dx = bottom.x.toDouble() - top.x; val dy = bottom.y.toDouble() - top.y
+        val diagonal = hypot(dx, dy)
+        // Retracing a tilted one increases path length but does not add a digit's turns.
+        return points.any { p -> abs(dx * (p.y - top.y) - dy * (p.x - top.x)) / diagonal >= width * .18 }
+    }
+
+    private fun isDescendingStroke(strokes: List<List<InkPoint>>, width: Float, height: Float): Boolean {
+        if (strokes.size != 1 || height <= 0f || width / height !in .35f..1.8f) return false
+        val path = strokes.single()
+        val a = path.first(); val b = path.last()
+        val dx = b.x.toDouble() - a.x; val dy = b.y.toDouble() - a.y
+        if (dx * dy >= 0.0) return false
+        val diagonal = hypot(dx, dy)
+        var length = 0.0
+        for (i in 1 until path.size) length += hypot((path[i].x - path[i - 1].x).toDouble(),
+            (path[i].y - path[i - 1].y).toDouble())
+        return length <= diagonal * 1.04 && path.all { p ->
+            abs(dx * (p.y - a.y) - dy * (p.x - a.x)) / diagonal <= diagonal * .025
+        }
     }
 
     private fun normalize(strokes: List<List<InkPoint>>): List<InkPoint> {

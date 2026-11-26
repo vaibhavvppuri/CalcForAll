@@ -1,3 +1,81 @@
+# CalcForAll — Version 1.7 application validation passed
+
+**Application validation passed for Version 1.7 / code 10:** 1,546 host tests, 37/37 native tests on each API 23/34 emulator, 17 recorded manual observations (9 on API 23; 8 on API 34), and 19 packaged-API checks. Archive integrity and the final source commit are established separately by the release manifest and package audit. **Final Version 2.0 remains reserved.**
+
+This is a free, offline incremental development build, not the final 2.0 milestone. The earlier internal 2.0/code 9 build is publicly Version 1.6; its original records remain unchanged below. Recognition uses bundled components without paid services, uploads or runtime model downloads. No new learned model or runtime dependency was added.
+
+## Current artifacts and host verification
+
+APK SHA-256: `0a0fa95136c3466c77a50e50b7910a1eba77f2226c32834f34086e79c132f7a2` (56,159,182 bytes). Local API SHA-256: `2b968c792fe40490f2f3ed537ee0814a05627b520a8286d78006d1897df76478` (10,730,855 bytes). The exact final source commit and archive integrity belong to the release manifest/package audit produced after documentation finalization; they are not inferred here.
+
+Fresh `all-modules-1.log` completed successfully. Current JUnit XML agrees with these totals:
+
+| Module | Tests | Suites | Failures / errors / skipped |
+| --- | ---: | ---: | --- |
+| core | 1053 | 84 | 0 / 0 / 0 |
+| android | 415 | 51 | 0 / 0 / 0 |
+| api | 69 | 4 | 0 / 0 / 0 |
+| battery | 9 | 4 | 0 / 0 / 0 |
+
+Lint: 0 errors, 4 warnings and 4 informational findings (`AutoboxingStateCreation` 4, `MonochromeLauncherIcon` 1, `UseTomlInstead` 3). Battery record counts: 1910 PASS, 110 PROBE, 0 FAIL. PROBE is exploratory coverage, not a passed mathematical assertion. The actual packaged API passed 19/19 smoke checks and its owned JVM stopped; this is loopback/API evidence, not public deployment.
+
+## Controlled recognition changes and tradeoffs
+
+The same-path synthetic ink comparison recovers narrow 0/2/4/9 with explicit review, offers / instead of a mistaken root for the tested straight slash, and adds a single-symbol decimal candidate for a tap. Original continuous 9 still reads 9 but now needs review. The tested flat-top 3 still leads with incorrect 5; 3 is an alternative, so correction remains necessary. The same faint-fraction PNG changes from a rejected baseline layout to reviewed 1/2+1/3 = 5/6. Reduce shadows preserves the input and displays the processed image; the untreated manual fixture already read 46, so no shadow OCR accuracy gain is claimed.
+
+The ink comparison uses 15 identical synthetic fixture hashes and the same harness before/after. The original closed 4, straight/hooked 1, plus/minus/equal symbols retain their top matches; unsupported two-tap input remains refused. The single-tap change adds a One symbol candidate; its Math layout/Spaced line dot interpretation already existed. Spaced-line standalone minus/equal refusals remain. These are actual compiled-Kotlin observations, not a representative handwriting dataset or measured accuracy percentage.
+
+The API 34 faint-fraction image is byte-identical across the old/current APKs: `449bae389f5381f59e66752290e202d1874399eace0afcb57b2599c364834611`. Both raw OCR outputs contain the same five text lines; contrast-aware rule evidence allows the current complete fraction draft. The historical selected baseline test records an actual oracle assertion failure; the current selected pair passes. Current draft warnings/ambiguity are retained, with no raw-text fallback or answer-based ranking.
+
+Recorded photo `elapsedMillis`: baseline faint fraction 5,440 ms, current faint fraction 4,332 ms, current shadow observation 4,804 ms. These are single API 34 emulator observations, not a latency benchmark. The shadow regression did **not** execute untreated/baseline OCR; separate actual API 34 manual QA found the untreated image already read 46. Treatment improves the displayed illumination in that example but demonstrates no recognition-accuracy gain.
+
+## Same-APK native checks and actual manual scope
+
+Both full native receipts bind the installed APK above to the same current instrumentation APK/source inputs and record no active default network with Wi-Fi/mobile-data settings 0 before and after. Instrumentation timings below are the logs' `Time:` values, not whole-run wall time or physical-device performance.
+
+| Device | Native pass | Instrumentation time | Eight-image synthetic corpus | Run ID |
+| --- | --- | --- | --- | --- |
+| API 23 | 37/37 | 132.898 s | 4 automatic, 4 assisted-only out of 8 | `20261115T132643498Z-9616f2e9` |
+| API 34 | 37/37 | 112.468 s | 4 automatic, 4 assisted-only out of 8 | `20261115T131355250Z-e82cf59e` |
+
+Automatic and assisted-only corpus matches are distinct; neither a complete suite pass nor an assisted correction is a claim of automatic population recognition accuracy. Combined current manual QA records 17 passed observations (9 API 23, 8 API 34). The following descriptions come from the actual manual ledger; each is bound to its recorded PNG/receipt bytes:
+
+| API | Observation | Actual scope | Evidence basename |
+| --- | --- | --- | --- |
+| 23 | Continuous touch narrow4 requires review | One synthetic continuous touch stroke was replayed through the actualCanvas (transport receipt20261115T133149Z-98f11d92). Visible ink is a narrow4; transcription4 andCorrect symbol1:4 appear. The screen withholds an answer and shows explicitreview acknowledgment. This is emulator touch input, not physical handwriting accuracy. | `v23-v17-api23-narrow-four-review.png` |
+| 23 | Narrow4 review survives closing and reopening | ClosedWrite & calculate and reopened it throughTools; same4 transcription andexplicit review acknowledgment remain, with no answer before acknowledgment. | `v23-v17-api23-narrow-four-reopened.png` |
+| 23 | Reviewed narrow4 calculates4 | Tapped the explicitacknowledgment on the actual recognized4; the fully visible result is4. No typed replacement or symbolchoice was used. | `v23-v17-api23-narrow-four-acknowledged-result.png` |
+| 23 | New separated ink clears prior reviewed answer | Added a distant vertical1 to the previously reviewed4. The app cleared the oldanswer/transcription and refused separatednumbers needing an explicitoperator; it retained4and1 correction groups and showed no partialanswer. Initial UI automation expected an acknowledgmentbutton, then inspection established this correct refusal. | `v23-v17-api23-new-ink-inspection.png` |
+| 23 | Added operator needs fresh review then calculates5 | After the separated-number refusal, drew aplus between the existing4and1. The actual expression4+1 required freshacknowledgment (previousreview was invalidated); only after acknowledgment did the result5 appear. | `v23-v17-api23-new-expression-acknowledged.png` |
+| 23 | Single-tap decimal composes1point1 | InOne symbol mode, drew/chose1, made a single stationarytap and chose itsdot candidate, then drew/chose1. The untyped expression and result are1.1. Candidate screenshot separately records thedot. This exercises touch capture through single-symbol recognition and calculation. | `v23-v17-api23-single-tap-decimal-result.png` |
+| 23 | Older Android treatment labels wrap at130percent | Font scale read back1.3; Original, Boost contrast, Reduce shadows and Light text on dark are allfully visible in wrappedrows onAPI23 at720x1280. Originalgradient image was visible. | `v23-v17-api23-treatment-controls.png` |
+| 23 | Older Android shadow treatment reads46 | SelectedReduce shadows on the importedcontrolled gradient; preview becomes light while retaining12+34 and the resulting calculationis46. Untreated inputalso read46, so this is aworkflow/transformed-input check, not accuracygain. | `v23-v17-api23-shadow-reduced.png` |
+| 23 | Incomplete treated photo refuses an answer | Imported the controlled12+ image and selectedReduce shadows. The actual transcription remains12+ and the screen saysunexpected end of input(at3); no result orSave button is shown. It does not retain the previous46 or invent the missingoperand. | `v23-v17-api23-incomplete-treated-expression.png` |
+| 34 | Untreated shadow input reads46 | At font scale1.3, picker-imported native shadow input produced12+34 and46 without typing or treatment. This is the actual original read, so later treatment is not an accuracy-gain claim. | `v23-v17-api34-shadow-original.png` |
+| 34 | Treatment controls wrap at130percent font | Font setting read back1.3. All four image-treatment labels are fully visible across three rows at720x1280; original gradient preview is visible. Existing upper action row is horizontally scrollable. | `v23-v17-api34-treatment-controls.png` |
+| 34 | Explicit shadow treatment displays changed image | TappedReduce shadows, waited for recognized result46, then verified the selected chip and visibly whitened page with the same12+34; Original input already read46. Native probe separately proves unchanged input and changed exact output pixels. | `v23-v17-api34-shadow-reduced.png` |
+| 34 | Original restores untreated lighting | SelectingOriginal restored the visible left-to-right gray gradient, kept12+34/read46 and selectedOriginal; shadow reduction was not cumulatively applied. | `v23-v17-api34-original-restored.png` |
+| 34 | Faint fraction imports as exact5over6 | Imported exact controlled faint-bar PNG through the picker; unedited transcription((1)/(2))+((1)/(3)) and exact5/6 are visible. No raw-line selection or typed answer was used; saving remains explicit. | `v23-v17-api34-faint-fraction-answer.png` |
+| 34 | Cancel picker retains fraction draft | OpenedChoose image from completed5/6 draft and pressedBack; returned to the unchanged((1)/(2))+((1)/(3)) transcription/result with explicitSave, without pressingSave. | `v23-v17-api34-picker-cancel-retains-fraction.png` |
+| 34 | Recovered fraction visibly requests review | The unchanged faint-rule transcription displays close-alternative and stacked-fraction warnings, plus retake/typed-entry advice. A valid5/6 result does not suppress those recognition warnings. | `v23-v17-api34-faint-rule-review-warning.png` |
+| 34 | One reviewed fraction save survives restart | Closed/reopenedPhoto calculator with5/6 draft retained. History before save was7 (captured separately); tappedSave reviewed calculation once, observed8, force-stopped/relaunched, observed8and the restoredfractionexpression. No duplicate row on restart; the result was observed before save. | `v23-v17-api34-reviewed-save-restart.png` |
+
+## Artifact checks and remaining limits
+
+Current signature/permission checks confirm one development/debug signer, v1/v2 verification and no INTERNET permission. This is not a Play Store production signature or a malware guarantee. The scoped static native audit passes its 64-bit ELF/ZIP/RELRO checks; 2 retained 32-bit libraries remain listed outside that ELF 16 KB criterion. Execution on a 16 KB-page Android runtime has not been tested.
+
+The notice audit matches 36 APK legal assets, 38 API notice files and 21 external API JARs, with the corresponding-source archive retained. Third-party/ML Kit terms remain intact. These static/artifact checks do not substitute for package integrity verification.
+
+Physical phones, physical styluses, TalkBack and representative real handwriting/photo accuracy remain untested. General cursive, handwritten function words, arbitrary page/word-problem interpretation and unrestricted CAS remain outside the demonstrated scope. Missing or severely blurred marks cannot be reconstructed by brightness correction. Review recognized expressions before saving. Final Version 2.0 remains reserved for a later explicitly reviewed completion decision; this increment does not claim that all useful remaining work is done.
+
+Evidence: `artifact-final-summary.json`, current native run/log/corpus pairs, `manual-qa-input.json`, `device-final-qa.json`, paired ink receipts/JSONL, controlled `photo-probes` receipts, packaged API smoke, signature/permission/native and notice reports. Final archive hashes/source commit belong to the release-specific manifest and passing package audit.
+
+## Preserved verification history
+
+The entire earlier verification file follows unchanged: **177,004 bytes**, SHA-256 `2810a0983fcd71269230f085f21826eb728002abc2eabd6f1bac738f038fd217`. Its historical Version 2.0 heading refers to the old internal build now publicly Version 1.6, not the reserved final milestone.
+
+---
+
 # CalcForAll — Version 2.0 application validation passed
 
 **Status on 15 November 2026, India time:** **Version 2.0 application validation passed**, with Android version code **9**, continuing development candidate `395f721`. The fresh forced offline host gate passed **1,521 tests**, lint and APK/API assembly; artifact signature/permissions, static native-library and notice audits passed, as did **19/19 packaged-API smoke checks**. The exact same APK and test APK passed **34/34 native checks on each of API 23 and API 34**, offline before and after. Combined device QA passed with **ten API 23 and nine API 34 manual observations**. Source/distribution archive identities, package integrity and the final file scan are separate release receipts, not inferred from these application checks. Earlier development labels, candidate failures and release records remain unchanged below; the public renaming does not rewrite them.
